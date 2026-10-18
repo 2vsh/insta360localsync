@@ -1,71 +1,60 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Insta360 · Local Sync</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#111311">
+  <title>Insta360 · Local Studio</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><script src="/app.js" type="module"></script>
 </head>
 <body>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="Insta360 Local Studio home"><span class="mark">i</span><span>insta360<span class="brand-sub">LOCAL STUDIO</span></span></a>
+    <nav class="page-tabs" aria-label="Workspace"><button id="library-tab" class="selected" aria-current="page">Library</button><button id="transfer-tab">Sync &amp; settings</button></nav>
+    <span class="local-label"><span class="dot"></span> ON YOUR PC</span>
+  </header>
   <main>
-    <header>
-      <a class="brand" href="/" aria-label="Insta360 Local Sync home"><span class="mark">i</span><span>insta360<span class="brand-sub">LOCAL SYNC</span></span></a>
-      <span class="local-label"><span class="dot"></span> RUNNING ON YOUR PC</span>
-    </header>
-    <div id="demo-banner" class="demo-banner" hidden>DEMO MODE · Simulated X5 and synthetic files. Your real camera and settings are separate.</div>
-    <section class="intro">
-      <p class="eyebrow">YOUR CAMERA. YOUR STORAGE.</p>
-      <h1>Bring your footage home.</h1>
-      <p class="subtitle">Download your X5 originals straight to a folder on this PC.</p>
-    </section>
+    <div id="demo-banner" class="notice" hidden>DEMO MODE · Simulated camera. Transfer fixtures are not playable footage.</div>
     <div id="connection-error" class="notice error" role="alert" hidden></div>
-    <section class="workspace">
-      <div class="card transfer">
-        <div class="card-top"><h2>Camera transfer</h2><span id="camera-status" class="badge">Not checked</span></div>
-        <div class="camera-row"><div class="camera-icon" aria-hidden="true"><div class="lens"></div><div class="lens small"></div><div class="camera-word">X5</div></div><div><p id="camera-name" class="camera-name">Insta360 X5</p><p id="camera-detail" class="muted">Join your camera’s Wi-Fi to get started.</p></div></div>
-        <div class="destination-box"><span class="field-caption">DOWNLOAD FOLDER</span><span id="destination-label" class="folder-path">Loading…</span></div>
-        <div class="progress-heading"><span id="progress-title">Ready when you are</span><span id="progress-count"></span></div>
-        <progress id="progress" max="1" value="0" aria-label="Transfer progress"></progress>
-        <p id="current-file" class="muted current-file">Original files stay on the camera.</p>
-        <div id="sync-error" class="notice error" role="alert" hidden></div>
-        <button id="sync" class="primary" type="button">Download new footage <span aria-hidden="true">↓</span></button>
-        <p id="auto-status" class="small-note">Automatic checks are off.</p>
-      </div>
-      <div class="card settings">
-        <div class="card-top"><h2>Make yourself at home</h2><span class="step-label">SETTINGS</span></div>
-        <form id="settings-form">
-          <fieldset id="settings-fields">
-            <label for="destination">Save footage to</label>
-            <input id="destination" name="destination" type="text" placeholder="D:\Insta360" required autocomplete="off" spellcheck="false">
-            <p class="input-hint">Paste a folder path from File Explorer. Missing folders are created when you sync.</p>
-            <label for="camera-url">Camera address</label>
-            <input id="camera-url" name="cameraUrl" type="url" value="http://192.168.42.1" required spellcheck="false">
-            <div class="check-row"><input id="skip-lrv" type="checkbox" checked><label for="skip-lrv">Skip low-resolution proxy files</label></div>
-            <div class="check-row"><input id="auto-sync" type="checkbox"><label for="auto-sync">Check for new footage automatically</label></div>
-            <div class="interval-row"><label for="interval">Check every</label><input id="interval" type="number" min="10" max="86400" step="1" value="120" required><span>seconds</span></div>
-            <button id="save" class="secondary" type="submit">Save settings</button>
-          </fieldset>
-          <p id="save-message" class="small-note" role="status" aria-live="polite"></p>
-        </form>
-      </div>
-    </section>
-    <section class="stats" aria-label="Backup statistics">
-      <div><span id="saved-count" class="stat-value">0</span><span class="stat-label">files backed up</span></div>
-      <div><span id="saved-size" class="stat-value">0 B</span><span class="stat-label">stored locally</span></div>
-      <div><span id="last-sync" class="stat-value date-stat">—</span><span class="stat-label">last successful check</span></div>
-      <div><span class="stat-value kept">100%</span><span class="stat-label">originals kept on camera</span></div>
-    </section>
-    <section class="card library">
-      <div class="card-top"><h2>At home in your folder</h2><span class="step-label">COMPLETED BACKUPS</span></div>
+    <section id="library-page">
+      <div class="library-heading"><div><p class="eyebrow">THE WORLD IS YOUR VIEWFINDER</p><h1>Every angle. Your story.</h1><p class="subtitle">Your footage, a little closer. Find a moment and make it yours.</p></div><button id="go-sync" class="primary">↓ &nbsp; Sync camera</button></div>
+      <section class="stats" aria-label="Library statistics"><div><span id="saved-count" class="stat-value">0</span><span class="stat-label">original files</span></div><div><span id="saved-size" class="stat-value">0 B</span><span class="stat-label">stored locally</span></div><div><span id="last-sync" class="stat-value date-stat">—</span><span class="stat-label">last successful sync</span></div><div class="privacy-stat"><span class="stat-value">↗</span><span class="stat-label">All yours.<br>Always local.</span></div></section>
+      <div id="tools-notice" class="notice" hidden></div><div id="export-tray" class="export-tray" aria-live="polite" hidden></div>
+      <div class="library-toolbar"><div class="filter-tabs" role="group" aria-label="Filter library"><button data-filter="all" class="selected">All footage <span id="library-count">0</span></button><button data-filter="video">Videos</button><button data-filter="image">Photos</button></div><div class="library-search"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" aria-label="Search footage" placeholder="Find footage…" autocomplete="off"></label><select id="sort" aria-label="Sort footage"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">File name</option></select></div></div>
       <div id="history-error" class="notice error" role="alert" hidden></div>
-      <div id="empty-state" class="empty-state"><span class="empty-icon" aria-hidden="true">↓</span><h3>Your next adventure lands here.</h3><p>Connect to the X5 Wi-Fi, choose your folder, then download.<br>Both lens files are kept together for Insta360 Studio.</p></div>
-      <div class="table-scroll" id="files-wrap" hidden><table><thead><tr><th>Original file</th><th>Size</th><th>Saved</th><th>Status</th></tr></thead><tbody id="files"></tbody></table></div>
-      <p class="input-hint archive-note">These are original camera files. Open .insv and .insp footage in Insta360 Studio to stitch or reframe it.</p>
+      <div id="empty-state" class="empty-state"><div class="empty-orbit" aria-hidden="true"><span>◎</span></div><p class="eyebrow">READY FOR YOUR NEXT ADVENTURE</p><h2>A whole world of possibilities.</h2><p>Connect your X5 and sync your originals.<br>Your moments will be right here, ready to explore.</p><button id="empty-sync" class="secondary">Connect a camera ↗</button></div>
+      <div id="gallery" class="gallery" aria-label="Footage gallery"></div><p id="no-results" class="empty-state" hidden>No footage matches your search.</p><button id="load-more" class="secondary load-more" hidden>Show more footage</button>
+      <div class="library-footnote"><span><span class="dot"></span> Originals stay untouched</span><span>360° playback · Camera moves · Director cuts</span></div>
     </section>
-    <details class="card activity"><summary>Transfer activity <span>Connection details &amp; retry information</span></summary><pre id="logs" aria-label="Transfer activity log">No transfers yet.</pre></details>
-    <footer><p><strong>First connection?</strong> Turn on the X5, enable Wi-Fi, and connect this PC to its network in Windows Wi-Fi settings. Keep the camera powered and awake during transfers.</p><span>LOCAL BY DESIGN<br>No cloud account needed.</span></footer>
+    <section id="transfer-page" hidden>
+      <div class="library-heading"><div><p class="eyebrow">YOUR CAMERA. YOUR STORAGE.</p><h1>Bring your footage home.</h1><p class="subtitle">Download your X5 originals straight to a folder on this PC.</p></div></div>
+      <section class="workspace">
+        <div class="card transfer"><div class="card-top"><h2>Camera transfer</h2><span id="camera-status" class="badge">Not checked</span></div><div class="camera-row"><div class="camera-icon" aria-hidden="true"><div class="lens"></div><div class="lens small"></div><div class="camera-word">X5</div></div><div><p id="camera-name" class="camera-name">Insta360 X5</p><p id="camera-detail" class="muted">Join your camera’s Wi-Fi to get started.</p></div></div><div class="destination-box"><span class="field-caption">DOWNLOAD FOLDER</span><span id="destination-label" class="folder-path">Loading…</span></div><div class="progress-heading"><span id="progress-title">Ready when you are</span><span id="progress-count"></span></div><progress id="progress" max="1" value="0" aria-label="Transfer progress"></progress><p id="current-file" class="muted current-file">Original files stay on the camera.</p><div id="sync-error" class="notice error" role="alert" hidden></div><button id="sync" class="primary">↓ Download new footage</button><p id="auto-status" class="small-note">Automatic checks are off.</p></div>
+        <div class="card settings"><div class="card-top"><h2>Make yourself at home</h2><span class="step-label">SETTINGS</span></div><form id="settings-form"><fieldset id="settings-fields"><label for="destination">Save footage to</label><input id="destination" name="destination" type="text" placeholder="D:\Insta360" required autocomplete="off" spellcheck="false"><p class="input-hint">Paste a folder path from File Explorer. Missing folders are created when you sync.</p><label for="camera-url">Camera address</label><input id="camera-url" name="cameraUrl" type="url" value="http://192.168.42.1" required spellcheck="false"><div class="check-row"><input id="skip-lrv" type="checkbox" checked><label for="skip-lrv">Skip low-resolution proxy files</label></div><div class="check-row"><input id="auto-sync" type="checkbox"><label for="auto-sync">Check for new footage automatically</label></div><div class="interval-row"><label for="interval">Check every</label><input id="interval" type="number" min="10" max="86400" step="1" value="120" required><span>seconds</span></div><button id="save" class="secondary" type="submit">Save settings</button></fieldset><p id="save-message" class="small-note" role="status" aria-live="polite"></p></form></div>
+      </section>
+      <details class="card activity"><summary>Transfer activity <span>Connection details &amp; retry information</span></summary><pre id="logs" aria-label="Transfer activity log">No transfers yet.</pre></details><p class="input-hint">First connection? Join the X5’s own Wi-Fi hotspot in Windows. Keep the camera powered and awake during transfers.</p>
+    </section>
+    <footer><span>insta360 <span class="muted">/ local studio</span></span><span>No cloud. Just your point of view.</span></footer>
   </main>
+  <dialog id="viewer" class="viewer-dialog" aria-labelledby="viewer-title">
+    <div class="viewer-header"><button id="close-viewer" class="text-button">← <span>Library</span></button><div class="viewer-title"><h2 id="viewer-title">Footage</h2><span id="viewer-meta" class="muted"></span></div><span class="viewer-brand">LOCAL STUDIO</span></div>
+    <div class="viewer-layout">
+      <section class="screen-column" aria-label="Interactive viewer">
+        <div class="screen-toolbar"><span id="projection-label" class="badge">360° VIEW</span><div class="toolbar-actions"><button id="reset-view" class="text-button" title="Reset camera (R)">↺ Reset view</button><button id="fullscreen" class="text-button" aria-label="Toggle fullscreen">⛶</button></div></div>
+        <div id="stage" class="stage"><div id="frame" class="video-frame"><canvas id="viewport" tabindex="0" aria-label="Footage view. Drag to pan, scroll to zoom. Arrow keys pan, plus and minus zoom, Q and E rotate, R resets."></canvas><div class="frame-guides" aria-hidden="true"><span>+</span></div></div><div id="viewer-loading" class="viewer-loading" role="status"><span class="spinner"></span><h3 id="loading-title">Preparing your perspective</h3><p id="loading-detail">Creating a local playback preview. Originals stay untouched.</p><progress id="prepare-progress" max="1" value="0" aria-label="Preview preparation progress"></progress><button id="retry-preview" class="secondary" hidden>Try again</button><button id="cancel-preview" class="text-button">Cancel preparation</button></div><span id="live-label" class="stage-label">FREE LOOK</span><button id="stop-take" class="stage-stop" hidden>Finish take</button></div>
+        <div class="transport"><button id="play" class="icon-button" aria-label="Play" disabled>▶</button><span id="time-current" class="time-code">0:00</span><input id="seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="Video position" disabled><span id="time-total" class="time-code">0:00</span><button id="mute" class="text-button" aria-label="Mute audio">Sound on</button></div>
+        <div class="view-controls"><div class="view-hint">↔ &nbsp; Drag to look around <span>·</span> Scroll to zoom</div><label for="roll">Rotate <output id="roll-value">0°</output></label><input id="roll" type="range" min="-180" max="180" value="0" step="0.1"><label for="fov">Field of view <output id="fov-value">90°</output></label><input id="fov" type="range" min="30" max="120" value="90" step="0.1"></div>
+        <div class="view-readout"><span id="view-readout">PAN 0° &nbsp; TILT 0°</span><span id="stitch-note" hidden>Basic lens stitch · no FlowState stabilization</span></div><p class="viewer-tip">Keyboard: arrows to pan · + / − to zoom · Q / E to rotate · Space to play</p><video id="source-video" preload="metadata" playsinline hidden></video><img id="source-image" alt="" hidden>
+      </section>
+      <aside class="director-panel" aria-label="Director cut">
+        <div class="director-heading"><span class="director-symbol" aria-hidden="true">✳</span><div><p class="eyebrow">MAKE IT YOURS</p><h2>Director cut</h2></div></div><p class="director-description">You choose the angle. We follow your lead.</p><div id="photo-note" class="notice" hidden>Explore this photo with drag, zoom, and rotation. Open a video to make a director cut.</div>
+        <fieldset id="director-fields" disabled>
+          <div class="director-step"><span>01</span><h3>Pick your moment</h3><button id="whole-clip" class="text-button">Whole clip</button></div><div class="range-fields"><label for="cut-start">IN <input id="cut-start" type="number" value="0" min="0" step="0.01" aria-label="Start time in seconds"></label><span>→</span><label for="cut-end">OUT <input id="cut-end" type="number" value="0" min="0.1" step="0.01" aria-label="End time in seconds"></label></div><div class="range-actions"><button id="set-in" class="text-button">Set in at playhead</button><button id="set-out" class="text-button">Set out at playhead</button></div>
+          <div class="cut-options"><label for="aspect">Frame shape<select id="aspect"><option value="16:9">16:9 · Landscape</option><option value="9:16">9:16 · Portrait</option><option value="1:1">1:1 · Square</option></select></label><label for="quality">Resolution<select id="quality"><option value="1080">1080p</option><option value="720">720p</option></select></label></div>
+          <div class="director-step"><span>02</span><h3>Direct the scene</h3></div><p class="step-description">Set your opening angle, then record. Pan, rotate, and zoom as the clip plays.</p><button id="record" class="record-button"><span class="record-dot"></span> Record camera moves</button><div id="take-actions" class="take-actions" hidden><button id="replay-take" class="secondary">▶ Preview take</button><button id="clear-take" class="text-button">Clear take</button></div><p id="take-status" class="small-note" role="status">Your movements become the final frame.</p>
+          <div class="director-step"><span>03</span><h3>Keep your cut</h3></div><p class="step-description">A standard MP4 with your camera moves and the original audio.</p><button id="export-cut" class="primary" disabled>Render MP4 ↗</button>
+        </fieldset>
+        <div id="export-state" class="export-state" hidden><p id="export-message" role="status"></p><progress id="export-progress" max="1" value="0" aria-label="MP4 render progress"></progress><button id="cancel-export" class="text-button">Cancel render</button><button id="download-cut" class="primary" hidden>↓ Save MP4 as…</button></div><p id="director-error" class="notice error" role="alert" hidden></p><p class="director-footnote">Processed on this PC.<br>Your original footage is always preserved.</p>
+      </aside>
+    </div>
+  </dialog>
 </body>
 </html>

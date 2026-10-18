@@ -6,17 +6,21 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import { loadConfig, validateConfig, atomicJson, readManifest, runSync, defaults } from './lib/sync.mjs';
 import { createMockCamera } from './lib/mock-camera.mjs';
+import { MediaLibrary, serveMedia } from './lib/media.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/viewer.js', ['viewer.js', 'text/javascript; charset=utf-8']],
+  ['/view-path.js', ['view-path.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],
 ]);
 
-export async function createApp(initialConfig, { configFile = path.join(root, 'config.json'), demo = false, quiet = false } = {}) {
+export async function createApp(initialConfig, { configFile = path.join(root, 'config.json'), mediaDir = path.join(root, '.local', 'media'), demo = false, quiet = false } = {}) {
   let config = initialConfig, active = null, timer;
+  const media = new MediaLibrary({ destination: () => config.destination, cacheDir: mediaDir });
   const csrf = randomBytes(24).toString('hex');
   const state = { running: false, cameraReachable: null, camera: null, current: null, completed: 0, total: 0, result: null, lastRun: null, lastSuccess: null, error: null, logs: [] };
   const log = (message, level = 'info') => {
@@ -40,26 +44,46 @@ export async function createApp(initialConfig, { configFile = path.join(root, 'c
     clearInterval(timer);
     if (config.autoSync) { timer = setInterval(startSync, config.intervalSeconds * 1000); timer.unref(); }
   };
-  const readBody = async req => {
-    let body = '';
-    for await (const chunk of req) { body += chunk; if (body.length > 16384) throw new Error('Request body is too large.'); }
-    return JSON.parse(body || '{}');
+  const readBody = async (req, limit = 16384) => {
+    const chunks = []; let size = 0;
+    for await (const chunk of req) { size += chunk.length; if (size > limit) throw new Error('Request body is too large.'); chunks.push(chunk); }
+    return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
   };
   const server = http.createServer(async (req, res) => {
     const json = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       // Loopback binding plus Host validation prevents LAN exposure and DNS rebinding.
       const address = server.address();
       const allowedHosts = [`127.0.0.1:${address.port}`, `localhost:${address.port}`];
       if (!allowedHosts.includes(req.headers.host)) return json(403, { error: 'Open this app through localhost or 127.0.0.1.' });
       const url = new URL(req.url, `http://${req.headers.host}`);
+      if (req.headers['sec-fetch-site'] === 'cross-site') return json(403, { error: 'Open the local app directly.' });
       if (req.method === 'POST') {
         const token = Buffer.from(String(req.headers['x-sync-token'] || ''));
         if (token.length !== csrf.length || !timingSafeEqual(token, Buffer.from(csrf)) || (req.headers.origin && req.headers.origin !== url.origin)) return json(403, { error: 'Reload this page before making changes.' });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/media-tools') return json(200, await media.tools());
+      const jobRoute = /^\/api\/jobs\/([a-f0-9-]{36})(\/cancel)?$/.exec(url.pathname);
+      if (jobRoute) {
+        if (req.method === 'POST' && jobRoute[2]) return json(200, media.cancel(jobRoute[1]));
+        if (req.method === 'GET' && !jobRoute[2]) return json(200, media.job(jobRoute[1]));
+      }
+      const mediaRoute = /^\/api\/media\/([a-f0-9]{64})\/(inspect|prepare|export|thumbnail|preview|exports)(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname);
+      if (mediaRoute) {
+        const [, id, action, exportId] = mediaRoute;
+        if (req.method === 'POST' && action === 'inspect') return json(202, await media.inspect(id));
+        if (req.method === 'POST' && action === 'prepare') return json(202, await media.prepare(id));
+        if (req.method === 'POST' && action === 'export') return json(202, await media.export(id, await readBody(req, 24 * 1024 * 1024)));
+        if (['GET', 'HEAD'].includes(req.method) && ['thumbnail', 'preview', 'exports'].includes(action)) {
+          const token = Buffer.from(url.searchParams.get('token') || '');
+          if (token.length !== csrf.length || !timingSafeEqual(token, Buffer.from(csrf))) return json(403, { error: 'Reload the page to view media.' });
+          await serveMedia(req, res, await media.asset(id, action, exportId)); return;
+        }
       }
       if (req.method === 'GET' && url.pathname === '/api/status') {
         let files = [], historyError = null;
@@ -71,7 +95,7 @@ export async function createApp(initialConfig, { configFile = path.join(root, 'c
         const started = startSync(); return json(started ? 202 : 409, started ? { started: true } : { error: 'A download is already running.' });
       }
       if (req.method === 'POST' && url.pathname === '/api/config') {
-        if (state.running) return json(409, { error: 'Wait for this sync to finish before changing settings.' });
+        if (state.running || media.active || media.queue.length) return json(409, { error: 'Wait for downloads and media processing to finish before changing settings.' });
         const input = await readBody(req);
         const next = validateConfig({ ...config, cameraUrl: demo ? config.cameraUrl : input.cameraUrl, destination: demo ? config.destination : input.destination, autoSync: input.autoSync, intervalSeconds: input.intervalSeconds, skipLrv: input.skipLrv }, path.dirname(configFile));
         await atomicJson(configFile, next);
@@ -99,7 +123,7 @@ export async function createApp(initialConfig, { configFile = path.join(root, 'c
       return `http://127.0.0.1:${server.address().port}`;
     },
     async waitForSync() { await active; },
-    async close() { clearInterval(timer); await active; await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }); },
+    async close() { clearInterval(timer); await media.close(); await active; await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }); },
   };
 }
 

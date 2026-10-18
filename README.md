@@ -1,18 +1,43 @@
 # Insta360 Local Sync
 
-A working downloader concept for an **Insta360 X5 → local Windows folder**. It runs on your PC with Node.js 22.13 or newer and has no npm dependencies. The same app can run on Windows Server 2019/2022/2025 with Node.js 22.
+A local **Insta360 X5 downloader, gallery, 360° viewer, and director cut editor** for Windows. It runs on your PC with Node.js 22.13 or newer, uses FFmpeg for media processing, and has no npm dependencies. The downloader also supports a future Windows Server installation.
 
 ## Start on your Windows PC
 
 1. Install [Node.js 22.13 or newer](https://nodejs.org/en/download), then double-click **`Start-Sync.cmd`**. No npm install is needed.
 2. On first launch, choose a download folder in the Windows folder picker. The control page opens at **http://127.0.0.1:8640**.
 3. Turn on your X5 and enable its Wi-Fi. In **Windows Settings → Network & internet → Wi-Fi**, join the camera's Wi-Fi network using its password. Accept Windows' “no internet” warning and stay connected.
-4. In the control page, click **Download new footage**. You can paste a different folder path into **Save footage to** and save settings at any time between transfers.
+4. Open **Sync & settings** and click **Download new footage**. You can paste a different folder path into **Save footage to** and save settings between transfers and media processing jobs.
 5. Optionally enable **Check for new footage automatically**. Keep the launcher window open; automatic checks continue while the app is running. Closing just the browser leaves the app running.
 
 Keep the X5 powered, awake, and idle during a transfer. Close the phone app if it competes for the connection. Connecting one Wi-Fi adapter to the camera can temporarily disconnect the PC from its normal Wi-Fi; the downloader does not need internet access. Ethernet or a second Wi-Fi adapter can keep the normal network available.
 
 **A real X5 transfer was verified on Windows on 2026-10-18.** One short recording downloaded successfully; its size and SHA-256 matched the local backup record, and both video streams and audio decoded without errors. Physical-camera pagination and interrupted-transfer resumption have not yet been verified. The implementation follows Insta360's OSC documentation, which lists the X5 and `192.168.42.1`; firmware differences may require adjusting the file-list request. Exact camera errors are shown in **Transfer activity**.
+
+## Gallery, viewer, and director cuts
+
+Install a current [FFmpeg](https://ffmpeg.org/download.html) build containing **ffmpeg**, **ffprobe**, the **v360** filter, and **libx264**, and make both executables available on PATH. One Windows option is:
+
+```powershell
+winget install --id Gyan.FFmpeg --exact
+ffmpeg -version
+ffprobe -version
+```
+
+Open a new terminal and restart the launcher after installation. Camera downloads still work without FFmpeg. Use a current Chrome or Edge browser with hardware acceleration enabled for the interactive viewer and folder selection when saving a cut.
+
+1. Open **Library** to browse thumbnails, search filenames, sort, and filter videos or photos. The library uses completed backups in the selected destination's manifest. Older two-file lens pairs appear as one clip.
+2. Open a clip. The app creates and caches a browser-compatible playback preview on this PC. First preparation can take time, especially for long recordings; progress and cancellation are available. Later openings reuse the preview.
+3. Drag the image to pan and tilt; scroll or pinch to zoom. Use **Rotate** for roll and **Field of view** for zoom. Arrow keys pan, Q/E rotate, +/− zoom, R resets, and Space plays or pauses when the viewer canvas has focus.
+4. In **Director cut**, choose IN/OUT times in seconds, use the playhead buttons, or select **Whole clip**. Choose landscape, portrait, or square, and 720p or 1080p.
+5. Set your opening view, then click **Record camera moves**. Pan, rotate, and zoom as the video plays. Recording stops at OUT; **Finish take** uses the shorter recorded section. A stationary view is also a valid take. Pause to adjust your view without advancing the recording.
+6. **Preview take** replays the recorded path. **Render MP4** creates a standard H.264/AAC video with those movements and the original audio. **Save MP4 as…** opens a save picker in supported browsers so you can choose a filename and folder. Other browsers download through their normal download settings; enable their “ask where to save” option to choose a location.
+
+Take drafts are saved in this browser's local storage. Export progress and completed download buttons remain available in the library while the page stays open. Reloading or restarting clears that session's export list; the next render creates another file. Ranges are limited to six hours per cut. Media jobs run one at a time; closing the viewer cancels its preview preparation, while an MP4 render can continue in the background until cancelled or the app stops.
+
+**Stitching quality:** dual-fisheye `.insv` files use a basic FFmpeg stitch, including X5 files with both lens streams in one container and older separate `_00_`/`_10_` files. It has visible seams and does **not** apply Insta360 calibration, FlowState stabilization, or horizon leveling. Preview and export share a 2880 × 1440 panorama; 1080p export does not recover full original detail. Use Insta360 Studio for calibrated, stabilized, original-resolution results. Existing 2:1 panoramas and ordinary videos are also supported. JPEG/PNG and decodable JPEG-compatible `.insp` photos can be explored; RAW and standalone audio remain backups for desktop tools.
+
+Thumbnails, previews, camera paths, and exported MP4s are private derived files under **`.local/media/` in the app folder**. Allow disk space for these in addition to your originals. They never replace or edit the source files. To reclaim the cache, stop the app, save any wanted exports elsewhere, then remove `.local/media/`; previews regenerate when reopened. The camera need not remain connected to view completed local backups.
 
 ## Try it without a camera
 
@@ -45,8 +70,8 @@ Your chosen folder/
 - A file is published only after its byte count matches the camera's advertised size. A local SHA-256 is recorded after reading the completed file back from disk. **The camera does not provide a reference checksum**, so this is local integrity tracking, not an independent comparison with a camera-side hash.
 - Backup history is saved after every completed file. Existing matching files are skipped; missing files are downloaded again. If a local file's size or modification time changes, it is rechecked. Existing files with different contents are preserved and reported as conflicts; move the conflicting file aside and retry.
 - Files are **never deleted from the camera**. The app never sends a delete, format, or capture command. There is no cloud upload.
-- The page lists historical completed backups (up to 200 displayed). It is not a live filesystem integrity audit. The next sync rechecks the camera's current list against local files.
-- The app downloads original media. Use Insta360 Studio for stitching, stabilization, playback, and reframing.
+- The gallery lists historical completed backups with pagination. It is not a live filesystem integrity audit. The next sync rechecks the camera's current list against local files; the viewer rejects originals whose size or modification time changed.
+- Originals remain suitable for Insta360 Studio. The local viewer and director cuts use separate derived previews.
 
 ## Configuration and command line
 
@@ -113,7 +138,7 @@ After an unexpected crash, a lock from a dead local process is recovered automat
 node --test
 ```
 
-Tests exercise real HTTP downloads from a simulated OSC camera: exact bytes, lens pairing, pagination and firmware-parameter fallback, interrupted transfers, ignored/incorrect Range replies, deduplication, missing-file recovery, conflicting files, changed local content, concurrent-process locks, crash recovery, corrupt history, unreachable cameras, and the local HTTP API's request protections. The Windows launcher test downloads to a folder with Unicode characters and exits successfully. Publication checks are tested against temporary Git repositories, including private files already tracked by Git. Desktop and narrow layouts were checked in a browser, including downloading again and saving automatic-check settings. Automated tests use simulated cameras, and no startup task was registered. Separately, one real X5 transfer was verified as described above.
+Tests exercise simulated-camera transfers, exact bytes, pagination, resumption, duplicate and conflict handling, locks, crash recovery, the local API, the Unicode-path Windows launcher, and publication safeguards. Media tests generate synthetic footage and run real FFmpeg jobs for dual-stream and separate-file lenses, photos, flat videos, trimmed MP4s with and without audio, cancellation, protected Range downloads, manifest confinement, and matching camera-path projection and zoom. FFmpeg-dependent tests are skipped if the tools are missing. No startup task was registered. Separately, the actual downloaded X5 clip was viewed and used for a selected-section director cut with audio; desktop and mobile layouts were checked in a browser. Windows Server deployment and long recordings remain unverified.
 
 ## Publishing the source
 
