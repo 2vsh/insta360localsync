@@ -1,0 +1,10 @@
+{
+  "cameraUrl": "http://192.168.42.1",
+  "destination": "./downloads",
+  "autoSync": false,
+  "intervalSeconds": 120,
+  "skipLrv": true,
+  "port": 8640,
+  "requestTimeoutSeconds": 30,
+  "pageSize": 100
+}

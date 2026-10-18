@@ -1,0 +1,15 @@
+{
+  "name": "insta360-local-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Download Insta360 X5 footage directly to a Windows folder",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "start": "node server.mjs",
+    "demo": "node server.mjs --demo",
+    "sync": "node server.mjs --once",
+    "test": "node --test",
+    "check:public": "node scripts/check-public.mjs"
+  }
+}

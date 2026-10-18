@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Insta360 · Local Sync</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <a class="brand" href="/" aria-label="Insta360 Local Sync home"><span class="mark">i</span><span>insta360<span class="brand-sub">LOCAL SYNC</span></span></a>
+      <span class="local-label"><span class="dot"></span> RUNNING ON YOUR PC</span>
+    </header>
+    <div id="demo-banner" class="demo-banner" hidden>DEMO MODE · Simulated X5 and synthetic files. Your real camera and settings are separate.</div>
+    <section class="intro">
+      <p class="eyebrow">YOUR CAMERA. YOUR STORAGE.</p>
+      <h1>Bring your footage home.</h1>
+      <p class="subtitle">Download your X5 originals straight to a folder on this PC.</p>
+    </section>
+    <div id="connection-error" class="notice error" role="alert" hidden></div>
+    <section class="workspace">
+      <div class="card transfer">
+        <div class="card-top"><h2>Camera transfer</h2><span id="camera-status" class="badge">Not checked</span></div>
+        <div class="camera-row"><div class="camera-icon" aria-hidden="true"><div class="lens"></div><div class="lens small"></div><div class="camera-word">X5</div></div><div><p id="camera-name" class="camera-name">Insta360 X5</p><p id="camera-detail" class="muted">Join your camera’s Wi-Fi to get started.</p></div></div>
+        <div class="destination-box"><span class="field-caption">DOWNLOAD FOLDER</span><span id="destination-label" class="folder-path">Loading…</span></div>
+        <div class="progress-heading"><span id="progress-title">Ready when you are</span><span id="progress-count"></span></div>
+        <progress id="progress" max="1" value="0" aria-label="Transfer progress"></progress>
+        <p id="current-file" class="muted current-file">Original files stay on the camera.</p>
+        <div id="sync-error" class="notice error" role="alert" hidden></div>
+        <button id="sync" class="primary" type="button">Download new footage <span aria-hidden="true">↓</span></button>
+        <p id="auto-status" class="small-note">Automatic checks are off.</p>
+      </div>
+      <div class="card settings">
+        <div class="card-top"><h2>Make yourself at home</h2><span class="step-label">SETTINGS</span></div>
+        <form id="settings-form">
+          <fieldset id="settings-fields">
+            <label for="destination">Save footage to</label>
+            <input id="destination" name="destination" type="text" placeholder="D:\Insta360" required autocomplete="off" spellcheck="false">
+            <p class="input-hint">Paste a folder path from File Explorer. Missing folders are created when you sync.</p>
+            <label for="camera-url">Camera address</label>
+            <input id="camera-url" name="cameraUrl" type="url" value="http://192.168.42.1" required spellcheck="false">
+            <div class="check-row"><input id="skip-lrv" type="checkbox" checked><label for="skip-lrv">Skip low-resolution proxy files</label></div>
+            <div class="check-row"><input id="auto-sync" type="checkbox"><label for="auto-sync">Check for new footage automatically</label></div>
+            <div class="interval-row"><label for="interval">Check every</label><input id="interval" type="number" min="10" max="86400" step="1" value="120" required><span>seconds</span></div>
+            <button id="save" class="secondary" type="submit">Save settings</button>
+          </fieldset>
+          <p id="save-message" class="small-note" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+    <section class="stats" aria-label="Backup statistics">
+      <div><span id="saved-count" class="stat-value">0</span><span class="stat-label">files backed up</span></div>
+      <div><span id="saved-size" class="stat-value">0 B</span><span class="stat-label">stored locally</span></div>
+      <div><span id="last-sync" class="stat-value date-stat">—</span><span class="stat-label">last successful check</span></div>
+      <div><span class="stat-value kept">100%</span><span class="stat-label">originals kept on camera</span></div>
+    </section>
+    <section class="card library">
+      <div class="card-top"><h2>At home in your folder</h2><span class="step-label">COMPLETED BACKUPS</span></div>
+      <div id="history-error" class="notice error" role="alert" hidden></div>
+      <div id="empty-state" class="empty-state"><span class="empty-icon" aria-hidden="true">↓</span><h3>Your next adventure lands here.</h3><p>Connect to the X5 Wi-Fi, choose your folder, then download.<br>Both lens files are kept together for Insta360 Studio.</p></div>
+      <div class="table-scroll" id="files-wrap" hidden><table><thead><tr><th>Original file</th><th>Size</th><th>Saved</th><th>Status</th></tr></thead><tbody id="files"></tbody></table></div>
+      <p class="input-hint archive-note">These are original camera files. Open .insv and .insp footage in Insta360 Studio to stitch or reframe it.</p>
+    </section>
+    <details class="card activity"><summary>Transfer activity <span>Connection details &amp; retry information</span></summary><pre id="logs" aria-label="Transfer activity log">No transfers yet.</pre></details>
+    <footer><p><strong>First connection?</strong> Turn on the X5, enable Wi-Fi, and connect this PC to its network in Windows Wi-Fi settings. Keep the camera powered and awake during transfers.</p><span>LOCAL BY DESIGN<br>No cloud account needed.</span></footer>
+  </main>
+</body>
+</html>
