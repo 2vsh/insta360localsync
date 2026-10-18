@@ -12,7 +12,7 @@ A working downloader concept for an **Insta360 X5 → local Windows folder**. It
 
 Keep the X5 powered, awake, and idle during a transfer. Close the phone app if it competes for the connection. Connecting one Wi-Fi adapter to the camera can temporarily disconnect the PC from its normal Wi-Fi; the downloader does not need internet access. Ethernet or a second Wi-Fi adapter can keep the normal network available.
 
-**The real X5 hardware has not been tested here.** The implementation follows Insta360's OSC documentation, which lists the X5 and `192.168.42.1`; firmware differences may require adjusting the file-list request. Exact camera errors are shown in **Transfer activity**.
+**A real X5 transfer was verified on Windows on 2026-10-18.** One short recording downloaded successfully; its size and SHA-256 matched the local backup record, and both video streams and audio decoded without errors. Physical-camera pagination and interrupted-transfer resumption have not yet been verified. The implementation follows Insta360's OSC documentation, which lists the X5 and `192.168.42.1`; firmware differences may require adjusting the file-list request. Exact camera errors are shown in **Transfer activity**.
 
 ## Try it without a camera
 
@@ -74,8 +74,10 @@ Command-line overrides apply to the running process. Saving settings in the page
 The X5's OSC address defaults to `http://192.168.42.1`. This app does not join Wi-Fi automatically or change your network settings. You can test connectivity in PowerShell:
 
 ```powershell
-Invoke-RestMethod http://192.168.42.1/osc/info
+Invoke-RestMethod http://192.168.42.1/osc/info -TimeoutSec 5
 ```
+
+If this times out, check which Wi-Fi network Windows has joined. For the default camera address, the PC must join the **X5's own Wi-Fi hotspot**; having the PC and camera connected to your home router does not establish that connection. On the X5, open **Settings → Wi-Fi Settings**, enable Wi-Fi, and find the camera's network name and password. Join that network from Windows and accept **No internet**. Disconnect the phone from the camera first if it is connected. You can leave the PC's Ethernet connected to your router for internet access. Keep the camera awake, then retry the command and **Download new footage**. See Insta360's [OSC connection guide](https://github.com/Insta360Develop/Insta360-Developer_Docs/blob/main/docs/en/sdk/x-ace-go/osc/guide.md).
 
 Activity is shown in the console and page; console activity is not persisted across app restarts. The manifest and partial transfers are persisted in the destination.
 
@@ -111,7 +113,7 @@ After an unexpected crash, a lock from a dead local process is recovered automat
 node --test
 ```
 
-Tests exercise real HTTP downloads from a simulated OSC camera: exact bytes, lens pairing, pagination and firmware-parameter fallback, interrupted transfers, ignored/incorrect Range replies, deduplication, missing-file recovery, conflicting files, changed local content, concurrent-process locks, crash recovery, corrupt history, unreachable cameras, and the local HTTP API's request protections. The Windows launcher test downloads to a folder with Unicode characters and exits successfully. Publication checks are tested against temporary Git repositories, including private files already tracked by Git. Desktop and narrow layouts were checked in a browser, including downloading again and saving automatic-check settings. No startup task was registered or real camera contacted during validation.
+Tests exercise real HTTP downloads from a simulated OSC camera: exact bytes, lens pairing, pagination and firmware-parameter fallback, interrupted transfers, ignored/incorrect Range replies, deduplication, missing-file recovery, conflicting files, changed local content, concurrent-process locks, crash recovery, corrupt history, unreachable cameras, and the local HTTP API's request protections. The Windows launcher test downloads to a folder with Unicode characters and exits successfully. Publication checks are tested against temporary Git repositories, including private files already tracked by Git. Desktop and narrow layouts were checked in a browser, including downloading again and saving automatic-check settings. Automated tests use simulated cameras, and no startup task was registered. Separately, one real X5 transfer was verified as described above.
 
 ## Publishing the source
 
