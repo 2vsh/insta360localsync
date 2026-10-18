@@ -169,7 +169,10 @@ export class Viewer {
       this.setRange(0, this.duration); $('cut-start').max = this.duration; $('cut-end').max = this.duration;
       $('seek').max = this.duration; $('seek').value = 0; $('time-current').textContent = '0:00'; $('time-total').textContent = timecode(this.duration);
       $('viewer-loading').hidden = true; $('photo-note').hidden = !info.image; this.dialog.classList.toggle('photo-view', info.image);
-      $('stitch-note').hidden = !info.stitch; $('projection-label').textContent = info.projection === 'equirect' ? '360° VIEW' : 'STANDARD VIDEO';
+      $('stitch-note').hidden = !info.stitch;
+      const stitchLabel = info.stitch !== 'calibrated' ? 'Basic lens stitch' : info.calibration?.optics?.name !== 'bare' ? 'Lens-guard corrected stitch' : 'Calibrated lens stitch';
+      $('stitch-note').textContent = `${stitchLabel}${info.alignment ? ' · overlap aligned' : ''} · no FlowState stabilization`;
+      $('projection-label').textContent = info.projection === 'equirect' ? '360° VIEW' : 'STANDARD VIDEO';
       $('viewer-meta').textContent = `${info.image ? 'PHOTO' : timecode(info.duration)} · ${info.dual ? 'Dual-lens original' : info.width + ' × ' + info.height} · Original preserved`;
       $('director-fields').disabled = info.image; $('play').disabled = info.image; $('seek').disabled = info.image;
       this.loadDraft(); this.applyAspect(); this.readout(); this.controls(); this.tick();

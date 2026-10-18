@@ -16,7 +16,7 @@ Keep the X5 powered, awake, and idle during a transfer. Close the phone app if i
 
 ## Gallery, viewer, and director cuts
 
-Install a current [FFmpeg](https://ffmpeg.org/download.html) build containing **ffmpeg**, **ffprobe**, the **v360** filter, and **libx264**, and make both executables available on PATH. One Windows option is:
+Install a current [FFmpeg](https://ffmpeg.org/download.html) build containing **ffmpeg**, **ffprobe**, the **v360**, **remap**, **displace**, and **framerate** filters, **libx264**, and **FFV1**, and make both executables available on PATH. One Windows option is:
 
 ```powershell
 winget install --id Gyan.FFmpeg --exact
@@ -35,7 +35,11 @@ Open a new terminal and restart the launcher after installation. Camera download
 
 Take drafts are saved in this browser's local storage. Export progress and completed download buttons remain available in the library while the page stays open. Reloading or restarting clears that session's export list; the next render creates another file. Ranges are limited to six hours per cut. Media jobs run one at a time; closing the viewer cancels its preview preparation, while an MP4 render can continue in the background until cancelled or the app stops.
 
-**Stitching quality:** dual-fisheye `.insv` files use a basic FFmpeg stitch, including X5 files with both lens streams in one container and older separate `_00_`/`_10_` files. It has visible seams and does **not** apply Insta360 calibration, FlowState stabilization, or horizon leveling. Preview and export share a 2880 × 1440 panorama; 1080p export does not recover full original detail. Use Insta360 Studio for calibrated, stabilized, original-resolution results. Existing 2:1 panoramas and ordinary videos are also supported. JPEG/PNG and decodable JPEG-compatible `.insp` photos can be explored; RAW and standalone audio remain backups for desktop tools.
+**Stitching quality:** Supported X5 V3/V6 calibration supplies recorded lens geometry, distortion, sensor crop, guard profiles, and track order. The viewer identifies this as **Calibrated lens stitch** or **Lens-guard corrected stitch**. Videos also match textured overlap patches ten times per second and apply smoothed, bounded local alignment; the viewer adds **overlap aligned** when ready. This reduces seam kinks and doubled edges. Close objects, occlusions, reflections and fast motion can still show artifacts. It does **not** reproduce Insta360's proprietary stitching, FlowState stabilization, or horizon leveling. Unsupported/missing calibration uses the labelled **Basic lens stitch** fallback. Dual-stream recordings and older separate `_00_`/`_10_` pairs remain supported.
+
+Thumbnails use the recorded static geometry; playback and director cuts also share local overlap alignment. Preview and export share a 2880 × 1440 panorama; 1080p export does not recover full original detail. Use Insta360 Studio for its stitching/stabilization and original-resolution results. Existing 2:1 panoramas and ordinary videos are also supported. JPEG/PNG and decodable JPEG-compatible `.insp` photos can be explored; RAW and standalone audio remain backups for desktop tools. The calibration format/projection reference is credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+After updating from the earlier basic stitch, restart `Start-Sync.cmd`, refresh the page, and reopen the clip. The cache version changes automatically, so old thumbnails and previews are rebuilt without deleting originals or previously rendered exports. Saved camera paths may need reframing because the corrected projection changes the view. First preparation takes additional time for overlap analysis, calibrated maps and preview rendering. The current cache generation is 6.
 
 Thumbnails, previews, camera paths, and exported MP4s are private derived files under **`.local/media/` in the app folder**. Allow disk space for these in addition to your originals. They never replace or edit the source files. To reclaim the cache, stop the app, save any wanted exports elsewhere, then remove `.local/media/`; previews regenerate when reopened. The camera need not remain connected to view completed local backups.
 
@@ -138,7 +142,7 @@ After an unexpected crash, a lock from a dead local process is recovered automat
 node --test
 ```
 
-Tests exercise simulated-camera transfers, exact bytes, pagination, resumption, duplicate and conflict handling, locks, crash recovery, the local API, the Unicode-path Windows launcher, and publication safeguards. Media tests generate synthetic footage and run real FFmpeg jobs for dual-stream and separate-file lenses, photos, flat videos, trimmed MP4s with and without audio, cancellation, protected Range downloads, manifest confinement, and matching camera-path projection and zoom. FFmpeg-dependent tests are skipped if the tools are missing. No startup task was registered. Separately, the actual downloaded X5 clip was viewed and used for a selected-section director cut with audio; desktop and mobile layouts were checked in a browser. Windows Server deployment and long recordings remain unverified.
+Tests exercise simulated-camera transfers, exact bytes, pagination, resumption, duplicate and conflict handling, locks, crash recovery, the local API, the Unicode-path Windows launcher, and publication safeguards. Media tests generate synthetic footage and run real FFmpeg jobs for dual-stream and separate-file lenses, photos, flat videos, trimmed MP4s with and without audio, cancellation, protected Range downloads, manifest confinement, and matching camera-path projection and zoom. Calibration tests reconstruct a known sphere with reversed tracks, unequal lenses, guards and sensor crop; an independent separated-camera fixture checks seam-error reduction. FFmpeg-dependent tests are skipped if the tools are missing. No startup task was registered. Separately, the actual downloaded X5 clip was viewed and used for a selected-section director cut with audio; desktop and mobile layouts were checked in a browser. Windows Server deployment and long recordings remain unverified.
 
 ## Publishing the source
 
