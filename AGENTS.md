@@ -61,7 +61,7 @@ npm run check:public
 ### Publication handoff
 
 - The active checkout is on **`main`**, with `origin` pointing to the requested GitHub repository. On **2026-10-18**, a push of the application and maintained handoff succeeded, and GitHub's `refs/heads/main` was verified to match local `HEAD`. Consult `git log` for the latest commit and compare local `HEAD` with the remote branch to verify future publications; do not embed this file's own commit hash here.
-- The required downloader/documentation checkpoint was pushed to `main` and verified **before any gallery/viewer implementation**. Gallery/viewer implementation and validation are now complete; publish the feature update after the final staged public-file check, then verify GitHub's main ref again.
+- The required downloader/documentation checkpoint was pushed to `main` and verified **before any gallery/viewer implementation**. The completed gallery/viewer feature was then committed and pushed on 2026-10-18; GitHub's `refs/heads/main` matched the local feature commit. The final handoff update belongs with the published source; verify subsequent pushes the same way.
 - GitHub was reachable with the required network access using the explicit repository URL. Earlier connectivity failures no longer describe the verified remote state.
 - Work in the active checkout. Any old ignored **`.local/publish/`** copy is temporary and is not shipped in the source repository; do not recreate that workaround unless needed.
 - Keep private `config.json`, custom profiles under `.local/`, demo/test output, and footage out of commits. Run the public-file check on staged content before committing or pushing. Preserve remote history; do not force-push.
