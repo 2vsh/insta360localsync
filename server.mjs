@@ -22,7 +22,7 @@ const assets = new Map([
 
 export async function createApp(initialConfig, { configFile = path.join(root, 'config.json'), mediaDir = path.join(root, '.local', 'media'), demo = false, quiet = false } = {}) {
   let config = initialConfig, active = null, timer;
-  const media = new MediaLibrary({ destination: () => config.destination, cacheDir: mediaDir });
+  const media = new MediaLibrary({ destination: () => config.destination, cacheDir: mediaDir, lensGuardCorrection: () => config.lensGuardCorrection });
   const csrf = randomBytes(24).toString('hex');
   const state = { running: false, phase: null, storage: null, cameraReachable: null, camera: null, current: null, completed: 0, total: 0, result: null, lastRun: null, lastSuccess: null, error: null, logs: [] };
   const log = (message, level = 'info') => {
@@ -85,7 +85,9 @@ export async function createApp(initialConfig, { configFile = path.join(root, 'c
         if (['GET', 'HEAD'].includes(req.method) && ['thumbnail', 'preview', 'exports'].includes(action)) {
           const token = Buffer.from(url.searchParams.get('token') || '');
           if (token.length !== csrf.length || !timingSafeEqual(token, Buffer.from(csrf))) return json(403, { error: 'Reload the page to view media.' });
-          await serveMedia(req, res, await media.asset(id, action, exportId)); return;
+          const optics = url.searchParams.get('optics');
+          if (optics !== null && !['on', 'off'].includes(optics)) return json(400, { error: 'Invalid optics setting.' });
+          await serveMedia(req, res, await media.asset(id, action, exportId, optics === null ? undefined : optics === 'on')); return;
         }
       }
       if (req.method === 'GET' && url.pathname === '/api/status') {
@@ -112,7 +114,7 @@ export async function createApp(initialConfig, { configFile = path.join(root, 'c
       if (req.method === 'POST' && ['/api/config', '/api/policy-preview'].includes(url.pathname)) {
         if (state.running || media.active || media.queue.length) return json(409, { error: 'Wait for downloads and media processing to finish before changing settings.' });
         const input = await readBody(req);
-        const allowed = ['cameraUrl', 'destination', 'autoSync', 'intervalSeconds', 'skipLrv', 'backupMode', 'cleanupAtPercent', 'cleanupToPercent', 'keepRecentHours', 'minCameraAgeMinutes', 'mirrorGraceHours', 'minFreeDiskGB', 'maxDeletesPerRun', 'verifyEverySync', 'requestTimeoutSeconds', 'pageSize'];
+        const allowed = ['cameraUrl', 'destination', 'autoSync', 'intervalSeconds', 'skipLrv', 'backupMode', 'cleanupAtPercent', 'cleanupToPercent', 'keepRecentHours', 'minCameraAgeMinutes', 'mirrorGraceHours', 'minFreeDiskGB', 'maxDeletesPerRun', 'verifyEverySync', 'requestTimeoutSeconds', 'pageSize', 'lensGuardCorrection'];
         const changes = Object.fromEntries(allowed.filter(key => Object.hasOwn(input, key)).map(key => [key, input[key]]));
         if (demo) { delete changes.cameraUrl; delete changes.destination; }
         const next = validateConfig({ ...config, ...changes }, path.dirname(configFile));

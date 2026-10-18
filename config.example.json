@@ -15,5 +15,6 @@
   "mirrorGraceHours": 24,
   "minFreeDiskGB": 5,
   "maxDeletesPerRun": 50,
-  "verifyEverySync": false
+  "verifyEverySync": false,
+  "lensGuardCorrection": true
 }

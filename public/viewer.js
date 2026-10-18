@@ -111,6 +111,7 @@ export class Viewer {
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.recording) this.video.pause(); });
   }
   get duration() { return this.info?.duration || 0; }
+  get draftKey() { return `director:${this.file.id}:${this.info.lensGuardCorrection ? 'guards' : 'bare'}`; }
   get range() { return { start: Number($('cut-start').value), end: Number($('cut-end').value) }; }
   setRange(start, end) { $('cut-start').value = start.toFixed(2); $('cut-end').value = end.toFixed(2); }
   changeView(patch) {
@@ -121,7 +122,7 @@ export class Viewer {
   readout() {
     $('roll').value = this.view.roll; $('fov').value = this.view.fov;
     $('roll-value').textContent = `${Math.round(this.view.roll)}°`; $('fov-value').textContent = `${Math.round(this.view.fov)}°`;
-    $('view-readout').textContent = `PAN ${Math.round(this.view.yaw)}°    TILT ${Math.round(this.view.pitch)}°`;
+    $('view-readout').textContent = `Pan ${Math.round(this.view.yaw)}° · Tilt ${Math.round(this.view.pitch)}°`;
   }
   applyAspect() {
     const [w, h] = $('aspect').value.split(':').map(Number), stage = $('stage'), frame = $('frame');
@@ -133,15 +134,15 @@ export class Viewer {
     this.close(false); const generation = ++this.generation;
     this.file = file; this.info = null; this.ready = false; this.frames = []; this.view = defaultView(); this.prepareJob = null;
     $('aspect').value = '16:9'; $('quality').value = '1080'; this.applyAspect();
-    $('viewer-title').textContent = file.name; $('viewer-meta').textContent = 'Original preserved · Local playback';
-    $('viewer-loading').hidden = false; $('viewer-loading').classList.remove('failed'); $('loading-title').textContent = 'Preparing your perspective'; $('loading-detail').textContent = 'Creating a local playback preview. Originals stay untouched.';
+    $('viewer-title').textContent = file.name; $('viewer-meta').textContent = 'Loading clip…';
+    $('viewer-loading').hidden = false; $('viewer-loading').classList.remove('failed'); $('loading-title').textContent = 'Preparing preview'; $('loading-detail').textContent = 'Creating a playback copy on this PC.';
     $('prepare-progress').hidden = false; $('prepare-progress').value = 0; $('retry-preview').hidden = true; $('cancel-preview').hidden = false;
     $('director-fields').disabled = true; $('play').disabled = true; $('seek').disabled = true; $('photo-note').hidden = true;
     this.dialog.classList.remove('photo-view'); this.dialog.showModal(); document.body.style.overflow = 'hidden'; notice(); this.controls(); this.renderExport();
     try {
       if (!this.renderer) this.renderer = new Panorama(this.canvas);
       const job = await this.post(`/api/media/${file.id}/prepare`); this.prepareJob = job;
-      const info = await waitJob(job, state => { if (generation === this.generation) { $('loading-title').textContent = state.status === 'queued' ? 'Your preview is in line' : 'Preparing your perspective'; $('loading-detail').textContent = state.message; $('prepare-progress').value = state.progress; } });
+      const info = await waitJob(job, state => { if (generation === this.generation) { $('loading-title').textContent = state.status === 'queued' ? 'Preview queued' : 'Preparing preview'; $('loading-detail').textContent = state.message; $('prepare-progress').value = state.progress; } });
       if (generation !== this.generation) return;
       this.info = info; this.view = defaultView(); this.renderer.source = null;
       const source = info.image ? this.image : this.video;
@@ -171,9 +172,9 @@ export class Viewer {
       $('viewer-loading').hidden = true; $('photo-note').hidden = !info.image; this.dialog.classList.toggle('photo-view', info.image);
       $('stitch-note').hidden = !info.stitch;
       const stitchLabel = info.stitch !== 'calibrated' ? 'Basic lens stitch' : info.calibration?.optics?.name !== 'bare' ? 'Lens-guard corrected stitch' : 'Calibrated lens stitch';
-      $('stitch-note').textContent = `${stitchLabel}${info.alignment ? ' · overlap aligned' : ''} · no FlowState stabilization`;
-      $('projection-label').textContent = info.projection === 'equirect' ? '360° VIEW' : 'STANDARD VIDEO';
-      $('viewer-meta').textContent = `${info.image ? 'PHOTO' : timecode(info.duration)} · ${info.dual ? 'Dual-lens original' : info.width + ' × ' + info.height} · Original preserved`;
+      $('stitch-note').textContent = `${stitchLabel}${info.alignment ? ' · overlap aligned' : ''} · Lens guard correction ${info.lensGuardCorrection ? 'on' : 'off'} · FlowState stabilization unavailable`;
+      $('projection-label').textContent = info.image ? (info.projection === 'equirect' ? '360° photo' : 'Photo') : info.projection === 'equirect' ? '360° video' : 'Video';
+      $('viewer-meta').textContent = `${info.image ? 'Photo' : timecode(info.duration)} · ${info.dual ? 'Dual-lens original' : info.width + ' × ' + info.height}`;
       $('director-fields').disabled = info.image; $('play').disabled = info.image; $('seek').disabled = info.image;
       this.loadDraft(); this.applyAspect(); this.readout(); this.controls(); this.tick();
     } catch (error) { if (generation === this.generation) { this.prepareJob = null; this.loadingError(error.message); } }
@@ -205,7 +206,7 @@ export class Viewer {
   }
   validRange() { const { start, end } = this.range; if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end > this.duration + .01 || end - start < .1 || end - start > 21600) throw new Error('Choose a section within the clip, at least 0.1 seconds long (up to six hours).'); return { start, end }; }
   rangeChanged() { this.clearTake(); try { const range = this.validRange(); this.video.currentTime = range.start; notice(); } catch (e) { notice(e.message); } }
-  clearTake() { this.stopReplay(); this.frames = []; this.saveDraft(); this.controls(); $('take-status').textContent = 'Your movements become the final frame.'; }
+  clearTake() { this.stopReplay(); this.frames = []; this.saveDraft(); this.controls(); $('take-status').textContent = 'No take recorded.'; }
   controls() {
     const recording = !!this.recording, hasTake = this.frames.length > 0;
     this.dialog.classList.toggle('busy', recording);
@@ -215,7 +216,8 @@ export class Viewer {
     $('record').replaceChildren(); const dot = document.createElement('span'); dot.className = 'record-dot'; $('record').append(dot, recording ? 'Finish take' : hasTake ? 'Record a new take' : 'Record camera moves');
     $('take-actions').hidden = !hasTake || recording;
     const rendering = this.exports.get(this.file?.id); $('export-cut').disabled = !hasTake || recording || !!rendering?.running || this.pendingExports.has(this.file?.id);
-    $('live-label').className = 'stage-label' + (recording ? ' recording' : ''); $('live-label').textContent = recording ? '● RECORDING MOVES' : this.replaying ? 'TAKE PREVIEW' : 'FREE LOOK';
+    $('live-label').hidden = !recording && !this.replaying;
+    $('live-label').className = 'stage-label' + (recording ? ' recording' : ''); $('live-label').textContent = recording ? '● Recording view' : 'Take preview';
     $('stop-take').hidden = !recording && !this.replaying;
     $('stop-take').textContent = recording ? 'Finish take' : 'Stop preview';
     for (const id of ['roll', 'fov', 'reset-view']) $(id).disabled = this.replaying;
@@ -236,7 +238,7 @@ export class Viewer {
       this.frames = []; this.recording = true; this.capture(true, start); this.controls();
       $('take-status').textContent = 'Recording your view. Finish early to use a shorter section.';
       await this.video.play();
-      if (matchMedia('(max-width:800px)').matches) $('stage').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      if (matchMedia('(max-width:800px)').matches) $('stage').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
     } catch (e) { if (this.recording) this.finishTake(true); notice(e.message); }
     finally { $('record').disabled = false; }
   }
@@ -252,7 +254,7 @@ export class Viewer {
     const { start, end } = this.range, stop = early ? Math.min(this.video.currentTime, end) : end;
     this.video.pause(); this.capture(true, stop); this.recording = false;
     if (stop - start < .1) { this.frames = []; $('take-status').textContent = 'That take was too short. Record at least 0.1 seconds.'; }
-    else { this.setRange(start, stop); $('take-status').textContent = `Take saved · ${(stop - start).toFixed(2)} seconds · ${this.frames.length} camera samples. Preview it or render your MP4.`; }
+    else { this.setRange(start, stop); $('take-status').textContent = `Take saved · ${(stop - start).toFixed(2)} seconds. Preview it or render an MP4.`; }
     this.saveDraft(); this.controls();
   }
   async replay() {
@@ -260,23 +262,23 @@ export class Viewer {
       this.video.pause(); this.view = samplePath(this.frames, this.range.start); const generation = this.generation;
       await this.seekTo(this.range.start); if (generation !== this.generation) return;
       this.replaying = true; $('replay-take').textContent = 'Ⅱ Stop preview'; this.controls(); await this.video.play();
-      if (matchMedia('(max-width:800px)').matches) $('stage').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      if (matchMedia('(max-width:800px)').matches) $('stage').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
     } catch (e) { this.stopReplay(); notice(e.message); }
   }
   stopReplay() { if (this.replaying) { this.video.pause(); this.replaying = false; $('replay-take').textContent = '▶ Preview take'; this.controls(); } }
   saveDraft() {
     if (!this.file || !this.info || this.info.image) return;
-    try { localStorage.setItem(`director:${this.file.id}`, JSON.stringify({ ...this.range, frames: this.frames, aspect: $('aspect').value, quality: $('quality').value })); } catch { /* A full browser store must not interrupt a take. */ }
+    try { localStorage.setItem(this.draftKey, JSON.stringify({ ...this.range, frames: this.frames, aspect: $('aspect').value, quality: $('quality').value })); } catch { /* A full browser store must not interrupt a take. */ }
   }
   loadDraft() {
     try {
-      const draft = JSON.parse(localStorage.getItem(`director:${this.file.id}`));
+      const draft = JSON.parse(localStorage.getItem(this.draftKey));
       if (draft && draft.start >= 0 && draft.end <= this.duration + .01 && draft.end > draft.start && Array.isArray(draft.frames)) {
         this.setRange(draft.start, draft.end); this.frames = draft.frames;
         if (['16:9', '9:16', '1:1'].includes(draft.aspect)) $('aspect').value = draft.aspect;
         if (['720', '1080'].includes(draft.quality)) $('quality').value = draft.quality;
-        $('take-status').textContent = this.frames.length ? 'Your last take is restored. Preview it or record a new one.' : 'Your movements become the final frame.';
-      } else $('take-status').textContent = 'Your movements become the final frame.';
+        $('take-status').textContent = this.frames.length ? 'Saved take restored. Preview it or record a new one.' : 'No take recorded.';
+      } else $('take-status').textContent = 'No take recorded.';
     } catch { this.frames = []; }
   }
   async export() {
@@ -285,7 +287,7 @@ export class Viewer {
     this.pendingExports.add(file.id);
     try {
       this.validRange(); notice(); this.video.pause(); $('export-cut').disabled = true;
-      const job = await this.post(`/api/media/${file.id}/export`, { ...this.range, frames: this.frames, aspect: $('aspect').value, quality: $('quality').value });
+      const job = await this.post(`/api/media/${file.id}/export`, { ...this.range, frames: this.frames, aspect: $('aspect').value, quality: $('quality').value, lensGuardCorrection: this.info.lensGuardCorrection });
       const item = { file, job, running: true }; this.exports.set(file.id, item); this.renderExport(); this.onExport(this.exports);
       try { item.result = await waitJob(job, state => { item.job = state; this.renderExport(); this.onExport(this.exports); }); }
       catch (error) { item.error = error.message; }

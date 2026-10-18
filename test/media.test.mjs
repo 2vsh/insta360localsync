@@ -83,18 +83,18 @@ test('real FFmpeg pipeline prepares dual lenses and renders a trimmed MP4 with a
   const root = `/api/media/${id}`;
   assert.equal((await fetch(url + root + '/prepare', { method: 'POST' })).status, 403);
   const info = await wait(url, await post(root + '/inspect')); assert.equal(info.dual, true); assert.equal(info.projection, 'equirect');
-  const thumbnail = await fetch(url + info.thumbnail + '?token=' + token); assert.equal(thumbnail.headers.get('content-type'), 'image/jpeg'); assert.ok((await thumbnail.arrayBuffer()).byteLength > 100);
+  const thumbnail = await fetch(url + info.thumbnail + '&token=' + token); assert.equal(thumbnail.headers.get('content-type'), 'image/jpeg'); assert.ok((await thumbnail.arrayBuffer()).byteLength > 100);
   const preview = await wait(url, await post(root + '/prepare')); assert.equal(preview.audio, true);
   assert.equal((await fetch(url + preview.url)).status, 403);
-  assert.equal((await fetch(url + preview.url + '?token=' + token, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
-  const head = await fetch(url + preview.url + '?token=' + token, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(head.headers.get('accept-ranges'), 'bytes');
-  const whole = Buffer.from(await (await fetch(url + preview.url + '?token=' + token)).arrayBuffer());
-  const range = await fetch(url + preview.url + '?token=' + token, { headers: { Range: 'bytes=5-31' } }); assert.equal(range.status, 206); assert.deepEqual(Buffer.from(await range.arrayBuffer()), whole.subarray(5, 32));
-  const suffix = await fetch(url + preview.url + '?token=' + token, { headers: { Range: 'bytes=-17' } }); assert.deepEqual(Buffer.from(await suffix.arrayBuffer()), whole.subarray(-17));
-  for (const range of ['bytes=999999999-', 'bytes=8-3', 'bytes=0-1,3-4', 'bytes=-0']) assert.equal((await fetch(url + preview.url + '?token=' + token, { headers: { Range: range } })).status, 416);
+  assert.equal((await fetch(url + preview.url + '&token=' + token, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
+  const head = await fetch(url + preview.url + '&token=' + token, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(head.headers.get('accept-ranges'), 'bytes');
+  const whole = Buffer.from(await (await fetch(url + preview.url + '&token=' + token)).arrayBuffer());
+  const range = await fetch(url + preview.url + '&token=' + token, { headers: { Range: 'bytes=5-31' } }); assert.equal(range.status, 206); assert.deepEqual(Buffer.from(await range.arrayBuffer()), whole.subarray(5, 32));
+  const suffix = await fetch(url + preview.url + '&token=' + token, { headers: { Range: 'bytes=-17' } }); assert.deepEqual(Buffer.from(await suffix.arrayBuffer()), whole.subarray(-17));
+  for (const range of ['bytes=999999999-', 'bytes=8-3', 'bytes=0-1,3-4', 'bytes=-0']) assert.equal((await fetch(url + preview.url + '&token=' + token, { headers: { Range: range } })).status, 416);
   const cut = { start: .2, end: .8, aspect: '9:16', quality: '720', frames: [frame(.2), frame(.5, 20, 10, 5, 70), frame(.8, 40, 20, 10, 50)] };
   const exported = await wait(url, await post(root + '/export', cut)); assert.equal(exported.width, 720); assert.equal(exported.height, 1280);
-  const response = await fetch(url + exported.url + '?token=' + token); assert.equal(response.status, 200); assert.match(response.headers.get('content-disposition'), /attachment/);
+  const response = await fetch(url + exported.url + '&token=' + token); assert.equal(response.status, 200); assert.match(response.headers.get('content-disposition'), /attachment/);
   const output = path.join(dir, 'download.mp4'); await fs.writeFile(output, Buffer.from(await response.arrayBuffer()));
   const metadata = probe(output), video = metadata.streams.find(s => s.codec_type === 'video'), audio = metadata.streams.find(s => s.codec_type === 'audio');
   assert.equal(video.codec_name, 'h264'); assert.equal(video.width, 720); assert.equal(video.height, 1280); assert.equal(audio.codec_name, 'aac'); assert.ok(Math.abs(Number(metadata.format.duration) - .6) < .06);
@@ -108,6 +108,22 @@ test('real FFmpeg pipeline prepares dual lenses and renders a trimmed MP4 with a
   const error = rendered.reduce((sum, value, index) => sum + Math.abs(value - reference[index]), 0) / rendered.length;
   assert.ok(error < 6, `The exported movement differs from the selected view: mean RGB error ${error.toFixed(2)}`);
   const invalid = await fetch(url + root + '/export', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Sync-Token': token }, body: JSON.stringify({ ...cut, frames: [] }) }); assert.equal(invalid.status, 400);
+  // Changing the default must not break an open preview, a completed download,
+  // or an export explicitly made from the previous preview's optical setting.
+  await post('/api/config', { lensGuardCorrection: false });
+  assert.equal(JSON.parse(await fs.readFile(path.join(dir, 'config.json'), 'utf8')).lensGuardCorrection, false);
+  assert.equal((await fetch(url + preview.url + '&token=' + token)).status, 200);
+  assert.equal((await fetch(url + exported.url + '&token=' + token)).status, 200);
+  const bare = await wait(url, await post(root + '/prepare'));
+  assert.equal(bare.lensGuardCorrection, false); assert.match(bare.url, /optics=off$/);
+  assert.equal((await fetch(url + bare.url + '&token=' + token)).status, 200);
+  const pinned = await wait(url, await post(root + '/export', { ...cut, lensGuardCorrection: true }));
+  assert.match(pinned.url, /optics=on$/);
+  assert.equal((await fetch(url + pinned.url + '&token=' + token)).status, 200);
+  for (const data of [{ lensGuardCorrection: 'off' }, { lensGuardCorrection: 0 }]) {
+    assert.equal((await fetch(url + '/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Sync-Token': token }, body: JSON.stringify(data) })).status, 400);
+  }
+  assert.equal((await fetch(url + bare.url.replace('optics=off', 'optics=invalid') + '&token=' + token)).status, 400);
   assert.equal((await fetch(url + '/originals/dual.insv')).status, 404);
   assert.equal((await fs.stat(filename)).size, stat.size, 'the original is untouched');
 });
@@ -145,7 +161,7 @@ test('photos, standard video and separate lens pairs prepare locally; cancellati
   await assert.rejects(wait(await media.prepare(id('broken.insv'))), /could not be decoded/);
   const cut = { start: 0, end: .5, frames: [frame(0), frame(.5, 10, 5, 10, 70)], quality: '720' };
   const exported = await wait(await media.export(id('flat.mp4'), cut));
-  const asset = await media.asset(id('flat.mp4'), 'exports', exported.url.split('/').at(-1));
+  const asset = await media.asset(id('flat.mp4'), 'exports', new URL(exported.url, 'http://localhost').pathname.split('/').at(-1));
   assert.equal(probe(asset.filename).streams.filter(s => s.codec_type === 'audio').length, 0);
   const job = await media.export(id('flat.mp4'), cut); media.cancel(job.id); await assert.rejects(wait(job), /Cancelled/);
   await assert.rejects(media.export(id('photo.jpg'), cut), /require a video/);

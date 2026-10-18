@@ -6,7 +6,7 @@ export function createSettings({ post, poll, formatBytes }) {
   function collect() {
     return { destination: $('destination').value.trim(), cameraUrl: $('camera-url').value.trim(),
       backupMode: mode(), skipLrv: $('skip-lrv').checked, autoSync: $('auto-sync').checked,
-      verifyEverySync: $('verify-sync').checked, acknowledgeDeletes: $('acknowledge-deletes').checked,
+      verifyEverySync: $('verify-sync').checked, lensGuardCorrection: $('lens-guards').checked, acknowledgeDeletes: $('acknowledge-deletes').checked,
       ...Object.fromEntries(Object.entries(numeric).map(([key, id]) => [key, Number($(id).value)])) };
   }
   function options() {
@@ -18,11 +18,13 @@ export function createSettings({ post, poll, formatBytes }) {
     const changed = selected !== config?.backupMode || $('destination').value.trim() !== config?.destination || $('camera-url').value.trim() !== config?.cameraUrl;
     $('policy-acknowledgment').hidden = selected === 'keep' || !changed;
     $('settings-dirty').textContent = dirty ? 'Unsaved changes' : 'Settings saved';
+    $('lens-guard-state').textContent = $('lens-guards').checked ? 'On' : 'Off';
   }
   function populate() {
     $('destination').value = config.destination; $('camera-url').value = config.cameraUrl;
     form.querySelector(`[name=backupMode][value="${config.backupMode}"]`).checked = true;
     $('skip-lrv').checked = config.skipLrv; $('auto-sync').checked = config.autoSync; $('verify-sync').checked = config.verifyEverySync;
+    $('lens-guards').checked = config.lensGuardCorrection;
     for (const [key, id] of Object.entries(numeric)) $(id).value = config[key];
     $('acknowledge-deletes').checked = false; dirty = false; options();
   }
@@ -32,7 +34,7 @@ export function createSettings({ post, poll, formatBytes }) {
   form.addEventListener('submit', async event => {
     event.preventDefault(); if (busy) return;
     busy = true; $('settings-fields').disabled = true; $('save-message').textContent = 'Saving settings…';
-    try { await post('/api/config', collect()); initialized = false; $('save-message').textContent = 'Settings saved. The selected policy applies to the next sync.'; }
+    try { await post('/api/config', collect()); initialized = false; $('save-message').textContent = 'Settings saved. Backup changes apply to the next sync. Reopen footage to apply playback changes.'; }
     catch (e) { $('save-message').textContent = e.message; }
     finally { busy = false; await poll(); }
   });

@@ -182,7 +182,7 @@ test('local web app serves controls, guards writes and Host headers, saves setti
   const app = await createApp(config, { configFile, quiet: true });
   const url = await app.listen(0);
   try {
-    assert.match(await (await fetch(url)).text(), /Bring your footage home/);
+    assert.match(await (await fetch(url)).text(), /id="sync" class="primary">Sync now/);
     assert.equal((await fetch(url + '/app.js')).status, 200);
     let status = await (await fetch(url + '/api/status')).json();
     assert.equal(status.files.length, 0);

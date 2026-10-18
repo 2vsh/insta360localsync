@@ -85,6 +85,17 @@ test('recorded guard profiles and crop change the physical projection; unsupport
   ]) assert.equal(parseCalibration(metadata(extra)), null);
 });
 
+test('explicit guard correction off uses bare geometry without discarding native calibration or crop', () => {
+  const encoded = metadata(guardMetadata()), enabled = parseCalibration(encoded), bare = parseCalibration(encoded, { lensGuardCorrection: false });
+  assert.equal(bare.optics.name, 'bare'); assert.equal(bare.cropped, true);
+  assert.deepEqual(bare.lenses, enabled.lenses); assert.equal(bare.reverse, enabled.reverse);
+  const sample = projectLens(bare.lenses[0], 0, lensTransforms(bare)[0], [.6, 0, .8], 256, 190, bare.optics);
+  assert.ok(Math.abs(sample.x - ((121 - 8) + 210 * (.6 / 2.8)) * 256 / 240) < 1e-9);
+  assert.deepEqual(parseCalibration(metadata()), parseCalibration(metadata(), { lensGuardCorrection: false }), 'on does not invent guards for bare footage');
+  assert.equal(parseCalibration(metadata([field(68, 5)]), { lensGuardCorrection: false }).optics.name, 'bare', 'off explicitly bypasses unavailable guard data');
+  assert.equal(parseCalibration(Buffer.concat([field(80, 1), field(111, offset(6, 117)), field(54, offset(3))]), { lensGuardCorrection: false }), null, 'off never falls back to stale native offsets');
+});
+
 test('bounded trailer reader ignores corrupt lengths and preserves the original', async t => {
   const dir = await temporary(t), filename = path.join(dir, 'fixture.insv'), bytes = Buffer.concat([Buffer.alloc(32), trailer(metadata())]);
   await fs.writeFile(filename, bytes); assert.equal((await readCalibration(filename)).version, 6);
@@ -147,7 +158,7 @@ for (const guarded of [false, true]) test(`calibrated FFmpeg stitch reconstructs
   assert.ok(error / count < 3, `mean RGB error ${error / count}`);
   assert.ok(seamError < 8, `seam RGB error ${seamError}`);
   const take = await complete(await media.export(id, { start: 0, end: .3, quality: '720', frames: [{ time: 0, yaw: 90, pitch: 76, roll: 0, fov: 90 }, { time: .3, yaw: 90, pitch: 76, roll: 0, fov: 90 }] }));
-  const exported = await media.asset(id, 'exports', take.url.split('/').at(-1)); ffmpeg(['-i', exported.filename, '-f', 'null', '-']);
+  const exported = await media.asset(id, 'exports', new URL(take.url, 'http://localhost').pathname.split('/').at(-1)); ffmpeg(['-i', exported.filename, '-f', 'null', '-']);
   assert.deepEqual(await fs.readFile(filename), original);
 });
 

@@ -8,7 +8,7 @@ A local **Insta360 X5 downloader, gallery, 360° viewer, and director cut editor
 2. On first launch, choose a download folder in the Windows folder picker. The control page opens at **http://127.0.0.1:8640**.
 3. Turn on your X5 and enable its Wi-Fi. In **Windows Settings → Network & internet → Wi-Fi**, join the camera's Wi-Fi network using its password. Accept Windows' “no internet” warning and stay connected.
 4. Open **Sync** and click **Sync now**. Use **Settings** to choose a backup policy, destination, schedule, and verification options between transfers and media jobs.
-5. Optionally enable **Check for new footage automatically**. Keep the launcher window open; automatic checks continue while the app is running. Closing just the browser leaves the app running.
+5. Optionally enable **Sync automatically while the app is running**. Keep the launcher window open; automatic checks continue while the app is running. Closing just the browser leaves the app running.
 
 Keep the X5 powered, awake, and idle during a transfer. Close the phone app if it competes for the connection. Connecting one Wi-Fi adapter to the camera can temporarily disconnect the PC from its normal Wi-Fi; the downloader does not need internet access. Ethernet or a second Wi-Fi adapter can keep the normal network available.
 
@@ -29,19 +29,25 @@ Open a new terminal and restart the launcher after installation. Camera download
 1. Open **Library** to browse thumbnails, search filenames, sort, and filter videos or photos. The library uses completed backups in the selected destination's manifest. Older two-file lens pairs appear as one clip.
 2. Open a clip. The app creates and caches a browser-compatible playback preview on this PC. First preparation can take time, especially for long recordings; progress and cancellation are available. Later openings reuse the preview.
 3. Drag the image to pan and tilt; scroll or pinch to zoom. Use **Rotate** for roll and **Field of view** for zoom. Arrow keys pan, Q/E rotate, +/− zoom, R resets, and Space plays or pauses when the viewer canvas has focus.
-4. In **Director cut**, choose IN/OUT times in seconds, use the playhead buttons, or select **Whole clip**. Choose landscape, portrait, or square, and 720p or 1080p.
-5. Set your opening view, then click **Record camera moves**. Pan, rotate, and zoom as the video plays. Recording stops at OUT; **Finish take** uses the shorter recorded section. A stationary view is also a valid take. Pause to adjust your view without advancing the recording.
+4. In **Director cut**, choose Start/End times in seconds, use the playhead buttons, or select **Whole clip**. Choose landscape, portrait, or square, and 720p or 1080p.
+5. Set your opening view, then click **Record camera moves**. Pan, rotate, and zoom as the video plays. Recording stops at End; **Finish take** uses the shorter recorded section. A stationary view is also a valid take. Pause to adjust your view without advancing the recording.
 6. **Preview take** replays the recorded path. **Render MP4** creates a standard H.264/AAC video with those movements and the original audio. **Save MP4 as…** opens a save picker in supported browsers so you can choose a filename and folder. Other browsers download through their normal download settings; enable their “ask where to save” option to choose a location.
 
 Take drafts are saved in this browser's local storage. Export progress and completed download buttons remain available in the library while the page stays open. Reloading or restarting clears that session's export list; the next render creates another file. Ranges are limited to six hours per cut. Media jobs run one at a time; closing the viewer cancels its preview preparation, while an MP4 render can continue in the background until cancelled or the app stops.
 
 **Stitching quality:** Supported X5 V3/V6 calibration supplies recorded lens geometry, distortion, sensor crop, guard profiles, and track order. The viewer identifies this as **Calibrated lens stitch** or **Lens-guard corrected stitch**. Videos also match textured overlap patches ten times per second and apply smoothed, bounded local alignment; the viewer adds **overlap aligned** when ready. This reduces seam kinks and doubled edges. Close objects, occlusions, reflections and fast motion can still show artifacts. It does **not** reproduce Insta360's proprietary stitching, FlowState stabilization, or horizon leveling. Unsupported/missing calibration uses the labelled **Basic lens stitch** fallback. Dual-stream recordings and older separate `_00_`/`_10_` pairs remain supported.
 
+**Lens guard correction:** in **Settings > Playback and export**, switch correction on to use the supported guard profile recorded in the clip, or off to use bare-lens geometry. Save, then reopen the clip. On is the default and does not invent a guard profile for footage recorded without one. Native per-camera calibration, sensor crop, and track order are retained in either mode. Separate previews and browser drafts prevent a changed projection from silently replacing a take; completed download links and exports retain their optical setting.
+
 Thumbnails use the recorded static geometry; playback and director cuts also share local overlap alignment. Preview and export share a 2880 × 1440 panorama; 1080p export does not recover full original detail. Use Insta360 Studio for its stitching/stabilization and original-resolution results. Existing 2:1 panoramas and ordinary videos are also supported. JPEG/PNG and decodable JPEG-compatible `.insp` photos can be explored; RAW and standalone audio remain backups for desktop tools. The calibration format/projection reference is credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-After updating from the earlier basic stitch, restart `Start-Sync.cmd`, refresh the page, and reopen the clip. The cache version changes automatically, so old thumbnails and previews are rebuilt without deleting originals or previously rendered exports. Saved camera paths may need reframing because the corrected projection changes the view. First preparation takes additional time for overlap analysis, calibrated maps and preview rendering. The current cache generation is 6.
+After updating from the earlier basic stitch, restart `Start-Sync.cmd`, refresh the page, and reopen the clip. The cache version changes automatically, so old thumbnails and previews are rebuilt without deleting originals or previously rendered exports. Saved camera paths may need reframing because the corrected projection changes the view. First preparation takes additional time for overlap analysis, calibrated maps and preview rendering. The current cache generation is 7.
 
 Thumbnails, previews, camera paths, and exported MP4s are private derived files under **`.local/media/` in the app folder**. Allow disk space for these in addition to your originals. They never replace or edit the source files. To reclaim the cache, stop the app, save any wanted exports elsewhere, then remove `.local/media/`; previews regenerate when reopened. The camera need not remain connected to view completed local backups.
+
+## Interface design
+
+The interface uses task names (Library, Sync, Settings), filename search, backup dates and sizes, and direct action labels. Connection instructions sit beside Sync; technical playback details expand on demand. Controls have visible keyboard focus, labelled inputs, readable contrast, reduced-motion support and responsive layouts. The lens guard control follows the native checkbox switch pattern with a stable label and explicit On/Off state. These choices apply [Nielsen Norman Group's usability heuristics](https://www.nngroup.com/articles/ten-usability-heuristics/), [GOV.UK's interface-writing guidance](https://www.gov.uk/service-manual/design/writing-for-user-interfaces), and W3C's [WCAG 2.2 guidance](https://www.w3.org/TR/WCAG22/) and [switch pattern](https://www.w3.org/WAI/ARIA/apg/patterns/switch/).
 
 ## Try it without a camera
 
@@ -51,7 +57,7 @@ Double-click **`Start-Demo.cmd`**, or run:
 node server.mjs --demo --port 8641
 ```
 
-Open http://127.0.0.1:8641. This starts a simulated X5, downloads three synthetic fixtures, and skips a proxy file. Pressing Download again shows that they are already backed up. Demo settings and downloads live under `.demo/`, separate from your real settings. **Demo .insv/.insp files are transfer fixtures, not playable footage.**
+Open http://127.0.0.1:8641. This starts a simulated X5, downloads three synthetic fixtures, and skips a proxy file. Pressing Sync now again shows that they are already backed up. Demo settings and downloads live under `.demo/`, separate from your real settings. **Demo .insv/.insp files are transfer fixtures, not playable footage.**
 
 ## How files are stored
 
