@@ -85,7 +85,7 @@ test('supports nested firmware parameters and lists all pages', async t => {
   const { camera, config } = await setup(t, { nestedOnly: true });
   config.pageSize = 1;
   assert.equal((await runSync(config)).downloaded, 3);
-  assert.equal(camera.requests.filter(r => r.path === '/osc/commands/execute').length, 5);
+  assert.equal(camera.requests.filter(r => r.command === 'camera.listFiles').length, 5);
 });
 
 test('rejects repeated pagination instead of silently losing files', async t => {

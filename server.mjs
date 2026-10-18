@@ -1,17 +1,19 @@
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import { loadConfig, validateConfig, atomicJson, readManifest, runSync, defaults } from './lib/sync.mjs';
 import { createMockCamera } from './lib/mock-camera.mjs';
 import { MediaLibrary, serveMedia } from './lib/media.mjs';
+import { restoreRecovery } from './lib/policy.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/settings.js', ['settings.js', 'text/javascript; charset=utf-8']],
   ['/viewer.js', ['viewer.js', 'text/javascript; charset=utf-8']],
   ['/view-path.js', ['view-path.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
@@ -22,22 +24,22 @@ export async function createApp(initialConfig, { configFile = path.join(root, 'c
   let config = initialConfig, active = null, timer;
   const media = new MediaLibrary({ destination: () => config.destination, cacheDir: mediaDir });
   const csrf = randomBytes(24).toString('hex');
-  const state = { running: false, cameraReachable: null, camera: null, current: null, completed: 0, total: 0, result: null, lastRun: null, lastSuccess: null, error: null, logs: [] };
+  const state = { running: false, phase: null, storage: null, cameraReachable: null, camera: null, current: null, completed: 0, total: 0, result: null, lastRun: null, lastSuccess: null, error: null, logs: [] };
   const log = (message, level = 'info') => {
     const entry = { time: new Date().toISOString(), message, level };
     state.logs.push(entry); if (state.logs.length > 120) state.logs.shift();
     if (!quiet) console.log(`[${entry.time}] ${level === 'error' ? 'ERROR ' : ''}${message}`);
   };
   const startSync = () => {
-    if (active) return false;
-    Object.assign(state, { running: true, error: null, current: null, completed: 0, total: 0, result: null, cameraReachable: null, lastRun: new Date().toISOString() });
+    if (active || media.active || media.queue.length) return false;
+    Object.assign(state, { running: true, phase: 'backup', error: null, current: null, completed: 0, total: 0, result: null, cameraReachable: null, lastRun: new Date().toISOString() });
     active = runSync(config, { log, update: patch => Object.assign(state, patch) })
       .then(result => {
         if (result.failed) state.error = `${result.failed} file(s) failed. See activity below; partial downloads will be retried.`;
         else state.lastSuccess = new Date().toISOString();
       })
       .catch(e => { state.error = e.message; if (state.cameraReachable === null) state.cameraReachable = false; log(e.message, 'error'); })
-      .finally(() => { state.running = false; state.current = null; active = null; });
+      .finally(() => { state.running = false; state.phase = null; state.current = null; active = null; });
     return true;
   };
   const schedule = () => {
@@ -76,6 +78,7 @@ export async function createApp(initialConfig, { configFile = path.join(root, 'c
       const mediaRoute = /^\/api\/media\/([a-f0-9]{64})\/(inspect|prepare|export|thumbnail|preview|exports)(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname);
       if (mediaRoute) {
         const [, id, action, exportId] = mediaRoute;
+        if (req.method === 'POST' && active) return json(409, { error: 'Wait for the backup operation to finish before preparing media.' });
         if (req.method === 'POST' && action === 'inspect') return json(202, await media.inspect(id));
         if (req.method === 'POST' && action === 'prepare') return json(202, await media.prepare(id));
         if (req.method === 'POST' && action === 'export') return json(202, await media.export(id, await readBody(req, 24 * 1024 * 1024)));
@@ -86,21 +89,44 @@ export async function createApp(initialConfig, { configFile = path.join(root, 'c
         }
       }
       if (req.method === 'GET' && url.pathname === '/api/status') {
-        let files = [], historyError = null;
-        try { files = Object.values((await readManifest(config.destination)).files).sort((a, b) => b.savedAt.localeCompare(a.savedAt)); }
+        let files = [], recovery = [], historyError = null;
+        try {
+          const manifest = await readManifest(config.destination);
+          const recovering = new Set(Object.values(manifest.trash ?? {}).flatMap(item => item.files?.map(f => f.id) ?? []));
+          files = Object.values(manifest.files).filter(f => !recovering.has(f.id)).sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+          recovery = Object.values(manifest.trash ?? {}).map(item => ({ id: item.id, time: item.time, status: item.status, names: item.files.map(f => f.name), bytes: item.files.reduce((n, f) => n + f.size, 0) })).sort((a, b) => b.time.localeCompare(a.time));
+        }
         catch (e) { historyError = e.message; }
-        return json(200, { ...state, config, demo, token: csrf, files, historyError, backedUpBytes: files.reduce((sum, file) => sum + file.size, 0) });
+        return json(200, { ...state, config, demo, token: csrf, files, recovery, historyError, backedUpBytes: files.reduce((sum, file) => sum + file.size, 0) });
       }
       if (req.method === 'POST' && url.pathname === '/api/sync') {
-        const started = startSync(); return json(started ? 202 : 409, started ? { started: true } : { error: 'A download is already running.' });
+        const started = startSync(); return json(started ? 202 : 409, started ? { started: true } : { error: 'Wait for the current backup or media job to finish.' });
       }
-      if (req.method === 'POST' && url.pathname === '/api/config') {
+      const restore = /^\/api\/recovery\/([a-f0-9-]{36})\/restore$/.exec(url.pathname);
+      if (req.method === 'POST' && restore) {
+        if (active || media.active || media.queue.length) return json(409, { error: 'Wait for backup and media jobs to finish before restoring.' });
+        state.running = true; state.phase = 'restore';
+        active = restoreRecovery(config, restore[1]);
+        try { return json(200, await active); } finally { active = null; state.running = false; state.phase = null; }
+      }
+      if (req.method === 'POST' && ['/api/config', '/api/policy-preview'].includes(url.pathname)) {
         if (state.running || media.active || media.queue.length) return json(409, { error: 'Wait for downloads and media processing to finish before changing settings.' });
         const input = await readBody(req);
-        const next = validateConfig({ ...config, cameraUrl: demo ? config.cameraUrl : input.cameraUrl, destination: demo ? config.destination : input.destination, autoSync: input.autoSync, intervalSeconds: input.intervalSeconds, skipLrv: input.skipLrv }, path.dirname(configFile));
+        const allowed = ['cameraUrl', 'destination', 'autoSync', 'intervalSeconds', 'skipLrv', 'backupMode', 'cleanupAtPercent', 'cleanupToPercent', 'keepRecentHours', 'minCameraAgeMinutes', 'mirrorGraceHours', 'minFreeDiskGB', 'maxDeletesPerRun', 'verifyEverySync', 'requestTimeoutSeconds', 'pageSize'];
+        const changes = Object.fromEntries(allowed.filter(key => Object.hasOwn(input, key)).map(key => [key, input[key]]));
+        if (demo) { delete changes.cameraUrl; delete changes.destination; }
+        const next = validateConfig({ ...config, ...changes }, path.dirname(configFile));
+        const policyChanged = ['backupMode', 'destination', 'cameraUrl'].some(key => next[key] !== config[key]);
+        if (policyChanged) next.policyRevision = randomUUID();
+        if (url.pathname === '/api/policy-preview') {
+          state.running = true; state.phase = 'preview';
+          active = runSync(next, { dryRun: true });
+          try { return json(200, await active); } finally { active = null; state.running = false; state.phase = null; }
+        }
+        if (next.backupMode !== 'keep' && policyChanged && input.acknowledgeDeletes !== true) return json(400, { error: 'Acknowledge the selected deletion policy before saving it.' });
         await atomicJson(configFile, next);
         config = next;
-        Object.assign(state, { camera: null, cameraReachable: null, error: null, lastRun: null, lastSuccess: null, result: null, total: 0, completed: 0 });
+        Object.assign(state, { camera: null, storage: null, cameraReachable: null, error: null, lastRun: null, lastSuccess: null, result: null, total: 0, completed: 0 });
         schedule(); log('Settings saved. Destination: ' + config.destination);
         if (config.autoSync) startSync();
         return json(200, { saved: true });

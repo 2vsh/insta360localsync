@@ -1,7 +1,7 @@
+import { createSettings } from './settings.js';
 import { Viewer, waitJob, timecode } from './viewer.js';
 const $ = id => document.getElementById(id);
-const form = $('settings-form');
-let token, initialized = false, polling = false, pending = false;
+let token, polling = false, pending = false;
 const formatBytes = n => {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let value = n, u = 0;
@@ -16,20 +16,12 @@ async function post(url, value = {}) {
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
+const policyNames = { keep: 'Keep both', mirror: 'Mirror deletions', archive: 'Archive on this PC', space: 'Make room when needed' };
+const settings = createSettings({ post, poll, formatBytes });
 function render(data) {
   token = data.token;
   $('demo-banner').hidden = !data.demo;
-  if (!initialized) {
-    $('destination').value = data.config.destination;
-    $('camera-url').value = data.config.cameraUrl;
-    $('skip-lrv').checked = data.config.skipLrv;
-    $('auto-sync').checked = data.config.autoSync;
-    $('interval').value = data.config.intervalSeconds;
-    initialized = true;
-  }
-  $('destination').readOnly = data.demo;
-  $('camera-url').readOnly = data.demo;
-  $('settings-fields').disabled = data.running || pending;
+  settings.render(data);
   $('sync').disabled = data.running || pending;
   $('sync').textContent = data.running ? 'Downloading…' : 'Download new footage ↓';
   const status = $('camera-status');
@@ -46,8 +38,12 @@ function render(data) {
   const fractional = data.current?.size ? data.current.received / data.current.size : 0;
   $('progress').max = Math.max(1, data.total);
   $('progress').value = data.running ? Math.min(data.total, data.completed + fractional) : data.error ? data.completed : data.total;
-  $('progress-title').textContent = data.running ? (data.current ? 'Downloading originals' : 'Connecting & listing files…') : data.result ? (data.error ? 'Some files need another try' : 'Everything is up to date') : data.error ? 'Connection needs attention' : 'Ready when you are';
-  $('current-file').textContent = data.current ? `${data.current.name} · ${formatBytes(data.current.received)} / ${formatBytes(data.current.size)}` : data.result ? `${data.result.downloaded} saved · ${data.result.skipped} already backed up · ${data.result.failed} failed` : 'Original files stay on the camera.';
+  $('progress-title').textContent = data.running ? ({preview: 'Previewing backup policy', cleanup: 'Applying backup policy', restore: 'Restoring local files'}[data.phase] || (data.current ? 'Downloading originals' : 'Connecting & listing files…')) : data.result ? (data.error ? 'Some files need another try' : 'Everything is up to date') : data.error ? 'Connection needs attention' : 'Ready when you are';
+  $('current-file').textContent = data.current ? `${data.current.name} · ${formatBytes(data.current.received)} / ${formatBytes(data.current.size)}` : data.result ? `${data.result.downloaded} saved · ${data.result.skipped} already backed up · ${data.result.failed} failed` : `Policy: ${policyNames[data.config.backupMode]}.`;
+  $('active-policy').textContent = 'Backup policy: ' + policyNames[data.config.backupMode];
+  $('camera-storage').textContent = data.storage ? `Camera: ${formatBytes(data.storage.free)} free of ${formatBytes(data.storage.total)} (${Math.round(data.storage.usedPercent)}% used) ? at last check` : 'Camera storage: not checked';
+  const cleanup = data.result?.cleanup;
+  notice('cleanup-notice', cleanup?.blocked ? 'Cleanup paused: ' + cleanup.blocked : cleanup ? `${cleanup.cameraDeleted} camera file(s) removed ? ${cleanup.localRecycled} local file(s) in recovery ? ${cleanup.pending} pending` : null);
   notice('sync-error', data.error);
   notice('history-error', data.historyError);
   updateLibrary(data);
@@ -73,24 +69,15 @@ $('sync').addEventListener('click', async () => {
   catch (e) { notice('sync-error', e.message); }
   finally { pending = false; await poll(); }
 });
-form.addEventListener('submit', async event => {
-  event.preventDefault(); if (pending) return;
-  pending = true; $('settings-fields').disabled = true;
-  $('save-message').textContent = 'Saving…'; $('save-message').classList.remove('problem');
-  try {
-    await post('/api/config', { destination: $('destination').value.trim(), cameraUrl: $('camera-url').value.trim(), skipLrv: $('skip-lrv').checked, autoSync: $('auto-sync').checked, intervalSeconds: Number($('interval').value) });
-    $('save-message').textContent = 'Settings saved.'; initialized = false;
-  } catch (e) { $('save-message').textContent = e.message; $('save-message').classList.add('problem'); }
-  finally { pending = false; await poll(); }
-});
 let library = [], signature = '', filter = 'all', limit = 24, metadata = new Map(), inspectQueue = [], inspecting = 0;
 const kind = file => /\.(insp|jpe?g|png|dng)$/i.test(file.name) ? 'image' : /\.(insv|mp4|mov|webm|lrv)$/i.test(file.name) ? 'video' : 'other';
 const mediaUrl = url => `${url}?token=${encodeURIComponent(token)}`;
 function showPage(page) {
-  for (const name of ['library', 'transfer']) { $(`${name}-page`).hidden = name !== page; $(`${name}-tab`).classList.toggle('selected', name === page); if (name === page) $(`${name}-tab`).setAttribute('aria-current', 'page'); else $(`${name}-tab`).removeAttribute('aria-current'); }
+  for (const name of ['library', 'transfer', 'settings']) { $(`${name}-page`).hidden = name !== page; $(`${name}-tab`).classList.toggle('selected', name === page); if (name === page) $(`${name}-tab`).setAttribute('aria-current', 'page'); else $(`${name}-tab`).removeAttribute('aria-current'); }
   window.scrollTo(0, 0);
 }
 for (const id of ['go-sync', 'empty-sync', 'transfer-tab']) $(id).onclick = () => showPage('transfer');
+$('settings-tab').onclick = $('open-settings').onclick = () => showPage('settings');
 $('library-tab').onclick = () => showPage('library');
 function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
 const viewer = new Viewer({ post, mediaUrl, onExport: exports => {
