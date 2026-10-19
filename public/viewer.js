@@ -1,4 +1,4 @@
-import { angle, clamp, defaultView, samplePath, viewMatrix } from './view-path.js';
+import { angle, clamp, defaultView, samplePath, smoothPan, viewMatrix } from './view-path.js';
 const $ = id => document.getElementById(id);
 export const timecode = seconds => {
   const value = Math.max(0, seconds || 0), h = Math.floor(value / 3600), m = Math.floor(value / 60) % 60, s = Math.floor(value % 60);
@@ -63,7 +63,7 @@ export class Viewer {
   constructor({ post, mediaUrl, onExport }) {
     this.post = post; this.mediaUrl = mediaUrl; this.onExport = onExport;
     this.video = $('source-video'); this.image = $('source-image'); this.dialog = $('viewer'); this.canvas = $('viewport');
-    this.view = defaultView(); this.frames = []; this.generation = 0; this.exports = new Map(); this.pendingExports = new Set(); this.pointers = new Map();
+    this.view = defaultView(); this.resetPan(); this.frames = []; this.generation = 0; this.exports = new Map(); this.pendingExports = new Set(); this.pointers = new Map();
     this.resizeObserver = new ResizeObserver(() => this.applyAspect()); this.resizeObserver.observe($('stage'));
     $('close-viewer').onclick = () => this.close();
     this.dialog.addEventListener('cancel', event => { event.preventDefault(); this.close(); });
@@ -74,10 +74,11 @@ export class Viewer {
     $('seek').oninput = () => { if (this.ready && !this.recording) this.video.currentTime = Number($('seek').value); };
     $('mute').onclick = () => { this.video.muted = !this.video.muted; $('mute').textContent = this.video.muted ? 'Sound off' : 'Sound on'; $('mute').setAttribute('aria-label', this.video.muted ? 'Unmute audio' : 'Mute audio'); };
     for (const key of ['roll', 'fov']) $(key).oninput = () => this.changeView({ [key]: Number($(key).value) });
-    $('reset-view').onclick = () => this.changeView(defaultView());
+    $('reset-view').onclick = () => this.changeView(defaultView(), true);
     $('fullscreen').onclick = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('stage').requestFullscreen(); } catch (e) { notice(e.message); } };
     $('aspect').onchange = () => { this.applyAspect(); this.saveDraft(); };
     $('quality').onchange = () => this.saveDraft();
+    $('smooth-panning').onchange = () => { this.resetPan(); this.smoothingReadout(); this.saveDraft(); };
     for (const id of ['cut-start', 'cut-end']) $(id).onchange = () => this.rangeChanged();
     $('whole-clip').onclick = () => { this.setRange(0, this.duration); this.rangeChanged(); };
     $('set-in').onclick = () => { $('cut-start').value = this.video.currentTime.toFixed(2); this.rangeChanged(); };
@@ -98,26 +99,42 @@ export class Viewer {
       if (others.length) {
         const other = others[0][1], before = Math.hypot(old[0] - other[0], old[1] - other[1]), after = Math.hypot(event.clientX - other[0], event.clientY - other[1]);
         if (before > 1 && after > 1) this.changeView({ fov: this.view.fov * before / after });
-      } else this.changeView({ yaw: this.view.yaw - (event.clientX - old[0]) * this.view.fov / this.canvas.clientWidth, pitch: this.view.pitch + (event.clientY - old[1]) * this.view.fov / this.canvas.clientWidth });
+      } else this.changeView({ yaw: this.panTarget.yaw - (event.clientX - old[0]) * this.view.fov / this.canvas.clientWidth, pitch: this.panTarget.pitch + (event.clientY - old[1]) * this.view.fov / this.canvas.clientWidth });
       this.pointers.set(event.pointerId, [event.clientX, event.clientY]);
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) this.canvas.addEventListener(type, event => this.pointers.delete(event.pointerId));
     this.canvas.addEventListener('wheel', event => { if (!this.ready || this.replaying) return; event.preventDefault(); this.changeView({ fov: this.view.fov + clamp(event.deltaY, -100, 100) * .04 }); }, { passive: false });
     this.dialog.addEventListener('keydown', event => {
       if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(event.target.tagName) || !this.ready || this.replaying) return;
-      const key = event.key.toLowerCase(), changes = { arrowleft: { yaw: this.view.yaw - 3 }, arrowright: { yaw: this.view.yaw + 3 }, arrowup: { pitch: this.view.pitch + 3 }, arrowdown: { pitch: this.view.pitch - 3 }, '+': { fov: this.view.fov - 3 }, '=': { fov: this.view.fov - 3 }, '-': { fov: this.view.fov + 3 }, q: { roll: this.view.roll - 3 }, e: { roll: this.view.roll + 3 }, r: defaultView() };
-      if (changes[key]) { event.preventDefault(); this.changeView(changes[key]); } else if (key === ' ') { event.preventDefault(); this.togglePlay(); }
+      const key = event.key.toLowerCase(), changes = { arrowleft: { yaw: this.panTarget.yaw - 3 }, arrowright: { yaw: this.panTarget.yaw + 3 }, arrowup: { pitch: this.panTarget.pitch + 3 }, arrowdown: { pitch: this.panTarget.pitch - 3 }, '+': { fov: this.view.fov - 3 }, '=': { fov: this.view.fov - 3 }, '-': { fov: this.view.fov + 3 }, q: { roll: this.view.roll - 3 }, e: { roll: this.view.roll + 3 }, r: defaultView() };
+      if (changes[key]) { event.preventDefault(); this.changeView(changes[key], key === 'r'); } else if (key === ' ') { event.preventDefault(); this.togglePlay(); }
     });
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.recording) this.video.pause(); });
   }
   get duration() { return this.info?.duration || 0; }
   get draftKey() { return `director:${this.file.id}:${this.info.lensGuardCorrection ? 'guards' : 'bare'}`; }
   get range() { return { start: Number($('cut-start').value), end: Number($('cut-end').value) }; }
+  get smoothPanning() { return $('smooth-panning').checked; }
   setRange(start, end) { $('cut-start').value = start.toFixed(2); $('cut-end').value = end.toFixed(2); }
-  changeView(patch) {
+  resetPan() { this.panTarget = { yaw: this.view.yaw, pitch: this.view.pitch }; this.panClock = null; }
+  smoothingReadout() { $('smooth-panning-state').textContent = this.smoothPanning ? 'On' : 'Off'; }
+  changeView(patch, immediate = false) {
     if (this.replaying) return;
-    Object.assign(this.view, patch); this.view.yaw = angle(this.view.yaw); this.view.pitch = clamp(this.view.pitch, -89, 89); this.view.roll = angle(this.view.roll); this.view.fov = clamp(this.view.fov, 30, 120);
+    const next = { ...this.view, ...this.panTarget, ...patch };
+    next.yaw = angle(next.yaw); next.pitch = clamp(next.pitch, -89, 89); next.roll = angle(next.roll); next.fov = clamp(next.fov, 30, 120);
+    this.panTarget = { yaw: next.yaw, pitch: next.pitch };
+    // Pausing a take permits an immediate adjustment at its frozen playhead.
+    this.view = this.smoothPanning && !immediate && !(this.recording && this.video.paused) ? { ...next, yaw: this.view.yaw, pitch: this.view.pitch } : next;
     this.readout(); if (this.recording && this.video.paused) this.capture(true);
+  }
+  updatePan(timestamp) {
+    // A take follows media time so buffering, pauses and hidden tabs cannot
+    // create an unrecorded wall-clock movement that jumps on resume.
+    const clock = this.recording ? this.video.currentTime : timestamp / 1000;
+    const elapsed = this.panClock === null ? 0 : Math.max(0, clock - this.panClock); this.panClock = clock;
+    if (!this.replaying && this.smoothPanning && !(this.recording && (this.video.paused || this.video.seeking))) {
+      this.view = smoothPan(this.view, this.panTarget, elapsed); this.readout();
+    }
   }
   readout() {
     $('roll').value = this.view.roll; $('fov').value = this.view.fov;
@@ -133,6 +150,7 @@ export class Viewer {
     if (!file) return;
     this.close(false); const generation = ++this.generation;
     this.file = file; this.info = null; this.ready = false; this.frames = []; this.view = defaultView(); this.prepareJob = null;
+    this.resetPan(); $('smooth-panning').checked = false; this.smoothingReadout();
     $('aspect').value = '16:9'; $('quality').value = '1080'; this.applyAspect();
     $('viewer-title').textContent = file.name; $('viewer-meta').textContent = 'Loading clip…';
     $('viewer-loading').hidden = false; $('viewer-loading').classList.remove('failed'); $('loading-title').textContent = 'Preparing preview'; $('loading-detail').textContent = 'Creating a playback copy on this PC.';
@@ -176,7 +194,7 @@ export class Viewer {
       $('projection-label').textContent = info.image ? (info.projection === 'equirect' ? '360° photo' : 'Photo') : info.projection === 'equirect' ? '360° video' : 'Video';
       $('viewer-meta').textContent = `${info.image ? 'Photo' : timecode(info.duration)} · ${info.dual ? 'Dual-lens original' : info.width + ' × ' + info.height}`;
       $('director-fields').disabled = info.image; $('play').disabled = info.image; $('seek').disabled = info.image;
-      this.loadDraft(); this.applyAspect(); this.readout(); this.controls(); this.tick();
+      this.loadDraft(); this.resetPan(); this.applyAspect(); this.readout(); this.controls(); this.tick();
     } catch (error) { if (generation === this.generation) { this.prepareJob = null; this.loadingError(error.message); } }
   }
   loadingError(message) { $('viewer-loading').hidden = false; $('viewer-loading').classList.add('failed'); $('loading-title').textContent = 'Preview unavailable'; $('loading-detail').textContent = message; $('prepare-progress').hidden = true; $('cancel-preview').hidden = true; $('retry-preview').hidden = false; }
@@ -188,9 +206,10 @@ export class Viewer {
     this.prepareJob = null; this.video.removeAttribute('src'); this.video.load(); this.image.removeAttribute('src');
     if (hide) { this.dialog.close(); document.body.style.overflow = ''; }
   }
-  tick() {
+  tick(timestamp = performance.now()) {
     if (!this.ready || !this.dialog.open) return;
     const time = this.video.currentTime;
+    this.updatePan(timestamp);
     if (!this.info.image) {
       if (this.recording) { this.capture(); if (time >= this.range.end || this.video.ended) this.finishTake(false); }
       if (this.replaying) { this.view = samplePath(this.frames, time); this.readout(); if (time >= this.range.end) this.stopReplay(); }
@@ -198,7 +217,7 @@ export class Viewer {
     }
     try { this.renderer.draw(this.info.image ? this.image : this.video, this.info, this.view); }
     catch { this.ready = false; this.loadingError('The graphics context was interrupted. Close and reopen this clip to recover.'); return; }
-    this.animation = requestAnimationFrame(() => this.tick());
+    this.animation = requestAnimationFrame(timestamp => this.tick(timestamp));
   }
   async togglePlay() {
     if (!this.ready || this.info.image) return;
@@ -211,6 +230,7 @@ export class Viewer {
     const recording = !!this.recording, hasTake = this.frames.length > 0;
     this.dialog.classList.toggle('busy', recording);
     for (const id of ['cut-start', 'cut-end', 'whole-clip', 'set-in', 'set-out', 'aspect', 'quality']) $(id).disabled = recording;
+    $('smooth-panning').disabled = recording || !!this.replaying;
     $('seek').disabled = recording || !this.ready || this.info?.image;
     $('record').classList.toggle('recording', recording);
     $('record').replaceChildren(); const dot = document.createElement('span'); dot.className = 'record-dot'; $('record').append(dot, recording ? 'Finish take' : hasTake ? 'Record a new take' : 'Record camera moves');
@@ -235,6 +255,7 @@ export class Viewer {
       const { start } = this.validRange(); this.stopReplay(); this.video.pause(); notice();
       const generation = this.generation; $('record').disabled = true;
       await this.seekTo(start); if (generation !== this.generation) return;
+      this.resetPan(); this.panClock = start;
       this.frames = []; this.recording = true; this.capture(true, start); this.controls();
       $('take-status').textContent = 'Recording your view. Finish early to use a shorter section.';
       await this.video.play();
@@ -252,23 +273,23 @@ export class Viewer {
   finishTake(early) {
     if (!this.recording) return;
     const { start, end } = this.range, stop = early ? Math.min(this.video.currentTime, end) : end;
-    this.video.pause(); this.capture(true, stop); this.recording = false;
+    this.updatePan(performance.now()); this.video.pause(); this.capture(true, stop); this.recording = false; this.resetPan();
     if (stop - start < .1) { this.frames = []; $('take-status').textContent = 'That take was too short. Record at least 0.1 seconds.'; }
     else { this.setRange(start, stop); $('take-status').textContent = `Take saved · ${(stop - start).toFixed(2)} seconds. Preview it or render an MP4.`; }
     this.saveDraft(); this.controls();
   }
   async replay() {
     try {
-      this.video.pause(); this.view = samplePath(this.frames, this.range.start); const generation = this.generation;
+      this.video.pause(); this.view = samplePath(this.frames, this.range.start); this.resetPan(); const generation = this.generation;
       await this.seekTo(this.range.start); if (generation !== this.generation) return;
       this.replaying = true; $('replay-take').textContent = 'Ⅱ Stop preview'; this.controls(); await this.video.play();
       if (matchMedia('(max-width:800px)').matches) $('stage').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
     } catch (e) { this.stopReplay(); notice(e.message); }
   }
-  stopReplay() { if (this.replaying) { this.video.pause(); this.replaying = false; $('replay-take').textContent = '▶ Preview take'; this.controls(); } }
+  stopReplay() { if (this.replaying) { this.video.pause(); this.replaying = false; this.resetPan(); $('replay-take').textContent = '▶ Preview take'; this.controls(); } }
   saveDraft() {
     if (!this.file || !this.info || this.info.image) return;
-    try { localStorage.setItem(this.draftKey, JSON.stringify({ ...this.range, frames: this.frames, aspect: $('aspect').value, quality: $('quality').value })); } catch { /* A full browser store must not interrupt a take. */ }
+    try { localStorage.setItem(this.draftKey, JSON.stringify({ ...this.range, frames: this.frames, aspect: $('aspect').value, quality: $('quality').value, smoothPanning: this.smoothPanning })); } catch { /* A full browser store must not interrupt a take. */ }
   }
   loadDraft() {
     try {
@@ -277,6 +298,7 @@ export class Viewer {
         this.setRange(draft.start, draft.end); this.frames = draft.frames;
         if (['16:9', '9:16', '1:1'].includes(draft.aspect)) $('aspect').value = draft.aspect;
         if (['720', '1080'].includes(draft.quality)) $('quality').value = draft.quality;
+        $('smooth-panning').checked = draft.smoothPanning === true; this.smoothingReadout();
         $('take-status').textContent = this.frames.length ? 'Saved take restored. Preview it or record a new one.' : 'No take recorded.';
       } else $('take-status').textContent = 'No take recorded.';
     } catch { this.frames = []; }

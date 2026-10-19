@@ -199,6 +199,8 @@ progress::-moz-progress-bar { background: var(--accent); }
 .cut-options { grid-template-columns: 1.5fr 1fr; }
 .cut-options select { padding-inline: 8px; font-size: 13px; }
 .step-description { font-size: 14px; margin: 12px 0 16px; }
+.pan-smoothing { gap: 12px; }
+.pan-smoothing .input-hint { font-size: 13px; }
 .record-button { background: #303b27; border-color: #6a8153; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; }
 .record-button.recording { background: #542e2d; border-color: #d29891; }
 .record-dot { width: 8px; height: 8px; background: #ffc1b9; border-radius: 50%; }

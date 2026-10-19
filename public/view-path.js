@@ -2,6 +2,13 @@
 export const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 export const angle = n => ((n + 180) % 360 + 360) % 360 - 180;
 export const defaultView = () => ({ yaw: 0, pitch: 0, roll: 0, fov: 90 });
+// Ease live pan input over 180 ms, independently of the display refresh rate.
+// Record the resulting positions; replay and export must not smooth them again.
+export function smoothPan(view, target, seconds) {
+  const blend = -Math.expm1(-Math.max(0, seconds) / .18);
+  const yaw = angle(target.yaw - view.yaw), pitch = target.pitch - view.pitch;
+  return { ...view, yaw: angle(view.yaw + yaw * blend), pitch: view.pitch + pitch * blend };
+}
 export function samplePath(frames, time) {
   if (!frames.length) return defaultView();
   let lo = 0, hi = frames.length - 1;
